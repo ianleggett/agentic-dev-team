@@ -1,19 +1,60 @@
 services:
 
+  workspace-init:
+    image: alpine:3.22
+    container_name: beads-workspace-init
+
+    user: "0:0"
+
+    environment:
+      USER_UID: ${USER_UID:-1000}
+      USER_GID: ${USER_GID:-1000}
+
+    volumes:
+      - ./workspace:/workspace
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo "Fixing workspace ownership to ${USER_UID}:${USER_GID}"
+
+        chown "${USER_UID}:${USER_GID}" /workspace
+
+        if [ -d /workspace/.beads ]; then
+          chown -R "${USER_UID}:${USER_GID}" /workspace/.beads
+        fi
+
+        echo "Workspace initialisation complete"
+
+    restart: "no"
+
+
   devbox:
     build:
       context: ./devbox
       args:
         USER_UID: ${USER_UID:-1000}
         USER_GID: ${USER_GID:-1000}
+        NPM_AUDIT_LEVEL: ${NPM_AUDIT_LEVEL:-high}
+
+    depends_on:
+      workspace-init:
+        condition: service_completed_successfully
 
     container_name: beads-devbox
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
+
     restart: unless-stopped
 
     working_dir: /workspace
 
     environment:
       HOME: /home/developer
+
+      BEADS_DIR: /workspace/.beads
+
+      LLM_API_KEY: ${LLM_API_KEY:-}
 
       GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Developer}
       GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-developer@local}
@@ -25,9 +66,6 @@ services:
 
     volumes:
       - ./workspace:/workspace
-
-      # Easiest option for an existing Gitea SSH key.
-      # You can replace this later with a dedicated agent key.
       - ${HOME}/.ssh:/home/developer/.ssh:ro
 
     tty: true

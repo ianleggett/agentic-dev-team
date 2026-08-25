@@ -333,12 +333,10 @@ RUN chmod 0755 /usr/local/bin/devbox-entrypoint
 # unprivileged developer user using gosu.
 # -----------------------------------------------------------------------------
 
-USER root
+USER developer
 
 WORKDIR /workspace
 
-ENV FIX_WORKSPACE_PERMISSIONS=true
-
-ENTRYPOINT ["/usr/local/bin/devbox-entrypoint"]
+ENV BEADS_DIR=/workspace/.beads
 
 CMD ["sleep", "infinity"]
