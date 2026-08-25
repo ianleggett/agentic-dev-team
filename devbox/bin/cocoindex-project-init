@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ -d .git ]] || {
+  echo "Run cocoindex-project-init from the root of a Git repository." >&2
+  exit 2
+}
+
+command -v ccc >/dev/null 2>&1 || {
+  echo "ccc is not installed." >&2
+  exit 2
+}
+
+echo "Configuring OpenCode MCP..."
+configure-cocoindex-opencode
+
+echo
+echo "Initialising CocoIndex Code for: $(pwd)"
+if [[ ! -e .cocoindex_code && ! -e .cocoindex ]]; then
+  # ccc init can be interactive depending on version/config.
+  # Keep it attached to the terminal so the user can select local embeddings.
+  ccc init
+else
+  echo "Existing CocoIndex configuration detected; skipping ccc init."
+fi
+
+echo
+echo "Building/updating code index..."
+ccc index
+
+echo
+echo "CocoIndex Code setup complete."
+echo "Try:"
+echo '  ccc search "where is application configuration loaded?"'

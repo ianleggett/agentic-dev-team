@@ -4,6 +4,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NPM_AUDIT_LEVEL=high
+ARG COCOINDEX_CODE_VERSION=0.2.39
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash build-essential ca-certificates curl wget git git-lfs jq unzip zip sqlite3 \
@@ -43,6 +44,9 @@ RUN curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/
 
 RUN git config --global init.defaultBranch main && git config --global safe.directory '*'
 
+# -----------------------------------------------------------------------------
+# OpenCode - security gated
+# -----------------------------------------------------------------------------
 USER root
 WORKDIR /opt/opencode
 
@@ -74,6 +78,42 @@ RUN set -eu; \
 
 RUN npm rebuild && chown -R "${USER_UID}:${USER_GID}" /opt/opencode
 
+# -----------------------------------------------------------------------------
+# CocoIndex Code FULL - pinned and security gated
+#
+# Runtime venv contains only CocoIndex Code and its dependencies.
+# pip-audit is installed in a separate security-tools venv so it is not added
+# to the runtime dependency graph.
+# -----------------------------------------------------------------------------
+
+RUN python3 -m venv /opt/cocoindex-code && \
+    /opt/cocoindex-code/bin/python -m pip install --upgrade pip setuptools wheel && \
+    /opt/cocoindex-code/bin/pip install "cocoindex-code[full]==${COCOINDEX_CODE_VERSION}"
+
+RUN python3 -m venv /opt/python-security-tools && \
+    /opt/python-security-tools/bin/python -m pip install --upgrade pip && \
+    /opt/python-security-tools/bin/pip install pip-audit
+
+RUN mkdir -p /opt/cocoindex-code/security-reports && \
+    set +e; \
+    /opt/python-security-tools/bin/pip-audit \
+      --path /opt/cocoindex-code/lib/python3.12/site-packages \
+      --format json \
+      --output /opt/cocoindex-code/security-reports/pip-audit.json; \
+    AUDIT_EXIT=$?; \
+    if [ -s /opt/cocoindex-code/security-reports/pip-audit.json ]; then \
+      cat /opt/cocoindex-code/security-reports/pip-audit.json | jq '.' || \
+      cat /opt/cocoindex-code/security-reports/pip-audit.json; \
+    fi; \
+    if [ "${AUDIT_EXIT}" -ne 0 ]; then \
+      echo "CocoIndex Code Python dependency audit FAILED"; \
+      exit "${AUDIT_EXIT}"; \
+    fi
+
+RUN /opt/cocoindex-code/bin/ccc --help >/dev/null && \
+    /opt/cocoindex-code/bin/python -c 'import cocoindex_code; print("CocoIndex Code import OK")' && \
+    chown -R "${USER_UID}:${USER_GID}" /opt/cocoindex-code
+
 COPY team/ /opt/agent-team/
 COPY templates/ /opt/agent-team/templates/
 COPY bin/_beads-worker /usr/local/libexec/_beads-worker
@@ -93,22 +133,30 @@ COPY bin/team-status /usr/local/bin/team-status
 COPY bin/team-init /usr/local/bin/team-init
 COPY bin/team-run-one /usr/local/bin/team-run-one
 COPY bin/beads-handoff /usr/local/bin/beads-handoff
+COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
+COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
 
 RUN chmod 0755 /usr/local/libexec/_beads-worker /usr/local/libexec/_planning-worker \
       /usr/local/bin/spec-writer /usr/local/bin/solution-architect /usr/local/bin/tech-lead \
       /usr/local/bin/java-dev /usr/local/bin/frontend-dev /usr/local/bin/database-dev \
       /usr/local/bin/devops /usr/local/bin/qa-test /usr/local/bin/code-reviewer \
       /usr/local/bin/security-reviewer /usr/local/bin/docs-writer /usr/local/bin/team-status \
-      /usr/local/bin/team-init /usr/local/bin/team-run-one /usr/local/bin/beads-handoff && \
+      /usr/local/bin/team-init /usr/local/bin/team-run-one /usr/local/bin/beads-handoff \
+      /usr/local/bin/configure-cocoindex-opencode /usr/local/bin/cocoindex-project-init && \
     chmod 0644 /opt/agent-team/*.md /opt/agent-team/templates/* && \
     mkdir -p /home/developer/.local/share/opencode/log \
-      /home/developer/.local/state/opencode /home/developer/.config/opencode && \
-    chown -R "${USER_UID}:${USER_GID}" /home/developer/.local /home/developer/.config
+      /home/developer/.local/state/opencode /home/developer/.config/opencode \
+      /home/developer/.cache/opencode /home/developer/.cache/cocoindex \
+      /home/developer/.local/share/cocoindex && \
+    chown -R "${USER_UID}:${USER_GID}" \
+      /home/developer/.local /home/developer/.config /home/developer/.cache
 
-ENV PATH="/opt/opencode/node_modules/.bin:/home/developer/.local/bin:${PATH}"
+ENV PATH="/opt/cocoindex-code/bin:/opt/opencode/node_modules/.bin:/home/developer/.local/bin:${PATH}"
 
 USER developer
-RUN command -v opencode && opencode --version
+
+RUN command -v opencode && opencode --version && \
+    command -v ccc && ccc --help >/dev/null
 
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

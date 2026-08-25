@@ -14,6 +14,21 @@ This repository uses Beads (`bd`) as the durable coordination and memory layer.
 9. Never use interactive `bd edit`; use `bd update` flags.
 10. Never close a bead unless acceptance criteria are satisfied.
 
+## Code discovery with CocoIndex Code
+
+CocoIndex Code (`ccc`) is available for AST-aware semantic repository search and is also exposed to OpenCode through MCP when configured.
+
+Use it as the preferred first step for conceptual codebase discovery:
+
+- use CocoIndex/MCP search for questions such as "where is authentication enforced?" or "which code handles employee hierarchy persistence?"
+- use `ripgrep`/`grep` for exact identifiers, literal strings, and exhaustive text matches
+- inspect the actual source before changing it; semantic search results are navigation aids, not proof
+- prefer targeted searches over loading large parts of the repository into model context
+- after substantial code changes, allow CocoIndex search to refresh the index or run `ccc index` when an explicit refresh is needed
+- do not store task state in CocoIndex; Beads remains the durable work/memory system
+
+If CocoIndex is unavailable or indexing fails, continue using normal repository tools and report the indexing problem separately. Do not block unrelated work solely because semantic search is unavailable.
+
 ## Routing labels
 Primary worker labels:
 - worker:spec
