@@ -1,35 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-[[ -d .git ]] || { echo "Run from repository root." >&2; exit 2; }
-
-if [[ ! -d .beads ]]; then
-  bd init --quiet
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+mkdir -p /workspace
+cd /workspace
+if [[ ! -d "$BEADS_DIR" ]]; then
+  echo "Initialising shared Beads DB: $BEADS_DIR"
+  bd init --quiet --stealth
+else
+  echo "Shared Beads DB already exists: $BEADS_DIR"
 fi
+configure-cocoindex-opencode 2>/dev/null || true
+cat <<'EOF'
+YAADT multi-project workspace ready.
 
-bd setup opencode || true
+Register repos:
+  project-add org-chart
+  project-add invoice-system
 
-mkdir -p docs/specs docs/architecture docs/ideas
+List projects:
+  project-list
 
-if command -v configure-cocoindex-opencode >/dev/null 2>&1; then
-  configure-cocoindex-opencode || echo "WARNING: Could not configure CocoIndex MCP."
-fi
+Plan:
+  spec-writer --project org-chart docs/ideas/feature.md
+  solution-architect --project org-chart docs/specs/feature.md
+  tech-lead --project org-chart docs/architecture/feature.md
 
-cat <<'TXT'
-Agent team initialised.
-
-CocoIndex Code is installed in the devbox.
-For a new repository, initialise/index it once with:
-  cocoindex-project-init
-
-Suggested flow:
-  spec-writer docs/ideas/feature.md
-  solution-architect docs/specs/feature.md
-  tech-lead docs/architecture/feature.md
+Run:
   team-status
-  java-dev / frontend-dev / database-dev / devops
-  qa-test
-  code-reviewer
-  security-reviewer
-  docs-writer
-TXT
+  java-dev
+EOF

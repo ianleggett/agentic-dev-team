@@ -1,21 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROLE="${1:?role required}"
-INPUT="${2:-}"
+ROLE="${1:?role required}"; shift
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+ROOT="${WORKSPACE_ROOT:-/workspace}"
 ROLE_FILE="/opt/agent-team/${ROLE}.md"
-COMMON_FILE="/opt/agent-team/_COMMON.md"
-[[ -f "$ROLE_FILE" ]] || { echo "Role file missing: $ROLE_FILE" >&2; exit 2; }
-[[ -d .git ]] || { echo "Run from repository root." >&2; exit 2; }
+PROJECT=""; INPUT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project) PROJECT="${2:?--project requires a name}"; shift 2 ;;
+    *) [[ -z "$INPUT" ]] || { echo "Unexpected argument: $1" >&2; exit 2; }; INPUT="$1"; shift ;;
+  esac
+done
+
+[[ -d "$BEADS_DIR" ]] || { echo "Shared Beads DB missing: $BEADS_DIR" >&2; exit 2; }
+
+if [[ -n "$PROJECT" ]]; then
+  [[ "$PROJECT" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Unsafe project name" >&2; exit 2; }
+  DIR="$ROOT/$PROJECT"
+  [[ -d "$DIR/.git" ]] || { echo "Project repo not found: $DIR" >&2; exit 2; }
+  cd "$DIR"
+  CONTEXT="Project label: project:$PROJECT
+Repository: $DIR
+All Beads work created for this project must carry project:$PROJECT."
+else
+  cd "$ROOT"
+  CONTEXT="No project supplied. Do not create executable implementation work until a project is identified."
+fi
+
 EXTRA=""
 if [[ -n "$INPUT" ]]; then
-  if [[ -f "$INPUT" ]]; then EXTRA="Input file: $INPUT
+  [[ -f "$INPUT" ]] && EXTRA="Input file: $INPUT
 
-$(cat "$INPUT")"; else EXTRA="User input:
-$INPUT"; fi
+$(cat "$INPUT")" || EXTRA="User input:
+$INPUT"
 fi
-exec opencode run "$(cat "$COMMON_FILE")
 
---- ROLE ---
-$(cat "$ROLE_FILE")
+exec opencode run "$(cat "$ROLE_FILE")
+
+Shared Beads DB: $BEADS_DIR
+$CONTEXT
 
 $EXTRA"

@@ -215,6 +215,9 @@ COPY bin/beads-handoff /usr/local/bin/beads-handoff
 COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
 COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
 
+COPY bin/project-add /usr/local/bin/project-add
+COPY bin/project-list /usr/local/bin/project-list
+
 RUN chmod 0755 \
       /usr/local/libexec/_beads-worker \
       /usr/local/libexec/_planning-worker \
@@ -233,6 +236,8 @@ RUN chmod 0755 \
       /usr/local/bin/team-init \
       /usr/local/bin/team-run-one \
       /usr/local/bin/beads-handoff \
+      /usr/local/bin/project-add \
+      /usr/local/bin/project-list \
       /usr/local/bin/configure-cocoindex-opencode \
       /usr/local/bin/cocoindex-project-init && \
     chmod 0644 \

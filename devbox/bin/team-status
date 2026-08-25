@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ -d .git ]] || { echo "Run from repository root." >&2; exit 2; }
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
 READY="$(bd ready --json)"
-printf '%-20s %s\n' WORKER READY
-for pair in \
-  'architect worker:architect' 'tech-lead worker:tech-lead' 'java worker:java' \
-  'frontend worker:frontend' 'database worker:database' 'devops worker:devops' \
-  'qa worker:qa' 'review worker:review' 'security worker:security' 'docs worker:docs'; do
-  name="${pair%% *}"; label="${pair#* }"
-  count="$(printf '%s' "$READY" | jq --arg l "$label" '[.[] | select(((.labels // []) | index($l)) != null)] | length')"
-  printf '%-20s %s\n' "$name" "$count"
-done
+printf '%-24s %-18s %s\n' PROJECT WORKER READY
+printf '%s' "$READY" | jq -r '
+ .[] |
+ [(.labels//[])[]|select(startswith("project:"))] as $p |
+ [(.labels//[])[]|select(startswith("worker:"))] as $w |
+ select(($p|length)==1 and ($w|length)==1) |
+ [$p[0],$w[0]]|@tsv' | sort | uniq -c | awk '{
+ c=$1;p=$2;w=$3;sub(/^project:/,"",p);sub(/^worker:/,"",w);
+ printf "%-24s %-18s %s\n",p,w,c
+}'
+echo
+echo "Unroutable ready beads:"
+printf '%s' "$READY" | jq -r '
+ .[] |
+ [(.labels//[])[]|select(startswith("project:"))] as $p |
+ [(.labels//[])[]|select(startswith("worker:"))] as $w |
+ select(($p|length)!=1 or ($w|length)!=1) |
+ "\(.id)\t\(.title)\tprojects=\($p|join(",")) workers=\($w|join(","))"'

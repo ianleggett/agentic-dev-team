@@ -71,6 +71,7 @@ services:
 
     environment:
       HOME: /home/developer
+      BEADS_DIR=/workspace/.beads
       BD_BIN: /usr/local/bin/bd
       HOST: 0.0.0.0
       PORT: 3007

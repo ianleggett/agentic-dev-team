@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+ROOT="${WORKSPACE_ROOT:-/workspace}"
+[[ $# -ge 1 ]] || { echo "Usage: project-add <project-name> [description]" >&2; exit 2; }
+P="$1"; DESC="${2:-Project repository at /workspace/$P}"
+[[ "$P" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid project name" >&2; exit 2; }
+DIR="$ROOT/$P"; [[ -d "$DIR/.git" ]] || { echo "Git repo not found: $DIR" >&2; exit 2; }
+LABEL="project:$P"
+EXISTING="$(bd list --json | jq -r --arg l "$LABEL" '
+ .[] | select((.issue_type=="epic" or .type=="epic") and (((.labels//[])|index($l))!=null)) | .id' | head -1)"
+[[ -z "$EXISTING" ]] || { echo "Already registered: $EXISTING"; bd show "$EXISTING" --json; exit 0; }
+REMOTE="$(git -C "$DIR" remote get-url origin 2>/dev/null || true)"
+bd create "Project: $P" -t epic --labels "$LABEL" \
+ --description "$DESC
+
+Project root: $DIR
+Git remote: ${REMOTE:-not configured}
+Project label: $LABEL" --json

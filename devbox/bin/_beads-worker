@@ -1,46 +1,58 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROLE="${1:?role required}"
-LABEL="${2:?worker label required}"
+WORKER_LABEL="${2:?worker label required}"
 TARGET="${3:-}"
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+ROOT="${WORKSPACE_ROOT:-/workspace}"
 ROLE_FILE="/opt/agent-team/${ROLE}.md"
-COMMON_FILE="/opt/agent-team/_COMMON.md"
-[[ -f "$ROLE_FILE" ]] || { echo "Role file missing: $ROLE_FILE" >&2; exit 2; }
-[[ -d .git ]] || { echo "Run from the root of a Git repository." >&2; exit 2; }
-command -v bd >/dev/null || { echo "bd not found" >&2; exit 2; }
-command -v opencode >/dev/null || { echo "opencode not found" >&2; exit 2; }
+die(){ echo "ERROR: $*" >&2; exit 2; }
 
-PRIME="$(bd prime)"
+[[ -d "$BEADS_DIR" ]] || die "Shared Beads DB missing: $BEADS_DIR"
+[[ -f "$ROLE_FILE" ]] || die "Role file missing: $ROLE_FILE"
+command -v bd >/dev/null || die "bd not found"
+command -v opencode >/dev/null || die "opencode not found"
+bd prime >/tmp/bd-prime.txt
+
 if [[ -n "$TARGET" ]]; then
-  CANDIDATE_JSON="$(bd show "$TARGET" --json)"
-  TARGET_TEXT="Target bead explicitly supplied: $TARGET. Work only on that bead if appropriate for your role."
+  ISSUE="$(bd show "$TARGET" --json)"
 else
-  READY_JSON="$(bd ready --json)"
-  CANDIDATE_JSON="$(printf '%s' "$READY_JSON" | jq --arg label "$LABEL" '[.[] | select(((.labels // []) | index($label)) != null)]')"
-  COUNT="$(printf '%s' "$CANDIDATE_JSON" | jq 'length')"
-  if [[ "$COUNT" -eq 0 ]]; then
-    echo "No ready beads routed to $ROLE ($LABEL)."
-    exit 0
-  fi
-  TARGET_TEXT="Choose exactly one bead from the candidate JSON. Claim it atomically before editing."
+  ISSUE="$(bd ready --json | jq --arg w "$WORKER_LABEL" '
+    [.[] |
+      select(((.labels // []) | index($w)) != null) |
+      select([(.labels // [])[] | select(startswith("project:"))] | length == 1)
+    ] | sort_by(.priority // 2) | .[0] // empty')"
+  [[ -n "$ISSUE" ]] || { echo "No ready ${WORKER_LABEL} bead with exactly one project:* label."; exit 0; }
 fi
 
-PROMPT="$(cat "$COMMON_FILE")
+PROJECT_LABEL="$(printf '%s' "$ISSUE" | jq -r '
+  (if type=="array" then .[0] else . end) |
+  [(.labels // [])[] | select(startswith("project:"))] |
+  if length==1 then .[0] else empty end')"
+[[ -n "$PROJECT_LABEL" ]] || die "Bead must have exactly one project:* label"
+PROJECT="${PROJECT_LABEL#project:}"
+[[ "$PROJECT" =~ ^[A-Za-z0-9._-]+$ ]] || die "Unsafe project label: $PROJECT_LABEL"
+PROJECT_DIR="$ROOT/$PROJECT"
+[[ -d "$PROJECT_DIR/.git" ]] || die "Git repository not found: $PROJECT_DIR"
 
---- ROLE ---
-$(cat "$ROLE_FILE")
+ID="$(printf '%s' "$ISSUE" | jq -r 'if type=="array" then .[0].id else .id end')"
+cd "$PROJECT_DIR"
 
---- BD PRIME ---
-$PRIME
+echo "Worker=$ROLE Bead=$ID Project=$PROJECT Repo=$PROJECT_DIR Beads=$BEADS_DIR"
 
-$TARGET_TEXT
+exec opencode run "$(cat "$ROLE_FILE")
 
-Candidate/target JSON:
-$CANDIDATE_JSON
+Shared Beads DB: $BEADS_DIR
+Project: $PROJECT_LABEL
+Repository: $PROJECT_DIR
+Target bead: $ID
 
-Session-end durability:
-- Add a concise Beads comment describing outcome, changed files and validation.
-- Use bd remember for durable reusable project knowledge where appropriate.
-- Attempt bd dolt push if a remote is configured; if no remote exists, report that without failing the work.
-"
-exec opencode run "$PROMPT"
+Issue:
+$ISSUE
+
+Beads context:
+$(cat /tmp/bd-prime.txt)
+
+Claim $ID atomically before editing. Work only in $PROJECT_DIR unless the bead explicitly
+requires otherwise. Do not create a local .beads directory. Leave a durable Beads handoff
+comment and stop after this bead."

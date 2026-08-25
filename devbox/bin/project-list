@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+bd list --json | jq -r '
+ .[] | select(.issue_type=="epic" or .type=="epic") |
+ [(.labels//[])[]|select(startswith("project:"))] as $p |
+ select(($p|length)>0) | "\(.id)\t\($p|join(","))\t\(.title)"'
