@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROLE="${1:?Usage: team-run-one <worker>}"
+command -v "$ROLE" >/dev/null 2>&1 || { echo "Unknown worker: $ROLE" >&2; exit 2; }
+exec "$ROLE"

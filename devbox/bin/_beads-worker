@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROLE="${1:?role required}"
+LABEL="${2:?worker label required}"
+TARGET="${3:-}"
+ROLE_FILE="/opt/agent-team/${ROLE}.md"
+COMMON_FILE="/opt/agent-team/_COMMON.md"
+[[ -f "$ROLE_FILE" ]] || { echo "Role file missing: $ROLE_FILE" >&2; exit 2; }
+[[ -d .git ]] || { echo "Run from the root of a Git repository." >&2; exit 2; }
+command -v bd >/dev/null || { echo "bd not found" >&2; exit 2; }
+command -v opencode >/dev/null || { echo "opencode not found" >&2; exit 2; }
+
+PRIME="$(bd prime)"
+if [[ -n "$TARGET" ]]; then
+  CANDIDATE_JSON="$(bd show "$TARGET" --json)"
+  TARGET_TEXT="Target bead explicitly supplied: $TARGET. Work only on that bead if appropriate for your role."
+else
+  READY_JSON="$(bd ready --json)"
+  CANDIDATE_JSON="$(printf '%s' "$READY_JSON" | jq --arg label "$LABEL" '[.[] | select(((.labels // []) | index($label)) != null)]')"
+  COUNT="$(printf '%s' "$CANDIDATE_JSON" | jq 'length')"
+  if [[ "$COUNT" -eq 0 ]]; then
+    echo "No ready beads routed to $ROLE ($LABEL)."
+    exit 0
+  fi
+  TARGET_TEXT="Choose exactly one bead from the candidate JSON. Claim it atomically before editing."
+fi
+
+PROMPT="$(cat "$COMMON_FILE")
+
+--- ROLE ---
+$(cat "$ROLE_FILE")
+
+--- BD PRIME ---
+$PRIME
+
+$TARGET_TEXT
+
+Candidate/target JSON:
+$CANDIDATE_JSON
+
+Session-end durability:
+- Add a concise Beads comment describing outcome, changed files and validation.
+- Use bd remember for durable reusable project knowledge where appropriate.
+- Attempt bd dolt push if a remote is configured; if no remote exists, report that without failing the work.
+"
+exec opencode run "$PROMPT"

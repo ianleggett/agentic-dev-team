@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -d .git ]] || { echo "Run from repository root." >&2; exit 2; }
+if [[ ! -d .beads ]]; then bd init --quiet; fi
+bd setup opencode || true
+mkdir -p docs/specs docs/architecture docs/ideas
+cat <<'TXT'
+Agent team initialised.
+
+Suggested flow:
+  spec-writer docs/ideas/feature.md
+  solution-architect docs/specs/feature.md
+  tech-lead docs/architecture/feature.md
+  team-status
+  java-dev / frontend-dev / database-dev / devops
+  qa-test
+  code-reviewer
+  security-reviewer
+  docs-writer
+TXT

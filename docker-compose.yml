@@ -1,0 +1,95 @@
+services:
+
+  devbox:
+    build:
+      context: ./devbox
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+
+    container_name: beads-devbox
+    restart: unless-stopped
+
+    working_dir: /workspace
+
+    environment:
+      HOME: /home/developer
+
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-Developer}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-developer@local}
+      GIT_COMMITTER_NAME: ${GIT_AUTHOR_NAME:-Developer}
+      GIT_COMMITTER_EMAIL: ${GIT_AUTHOR_EMAIL:-developer@local}
+
+      # Your existing external Gitea
+      GITEA_URL: ${GITEA_URL}
+
+    volumes:
+      - ./workspace:/workspace
+
+      # Easiest option for an existing Gitea SSH key.
+      # You can replace this later with a dedicated agent key.
+      - ${HOME}/.ssh:/home/developer/.ssh:ro
+
+    tty: true
+    stdin_open: true
+
+    command:
+      - /bin/bash
+      - -lc
+      - |
+        echo "Development environment ready"
+        echo
+        echo "Beads:"
+        bd version || true
+        echo
+        echo "Git:"
+        git --version
+        echo
+        echo "Workspace:"
+        ls -la /workspace
+        exec sleep infinity
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - beads-net
+
+  beads-ui:
+    build:
+      context: ./beads-ui
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+        NPM_AUDIT_LEVEL: ${NPM_AUDIT_LEVEL:-high}
+        BEADS_UI_REF: ${BEADS_UI_REF:-main}
+
+    container_name: beads-ui
+    restart: unless-stopped
+
+    working_dir: /workspace/org-chart
+
+    environment:
+      HOME: /home/developer
+      BD_BIN: /usr/local/bin/bd
+      HOST: 0.0.0.0
+      PORT: 3007
+
+    ports:
+      - "3007:3007"
+
+    volumes:
+      - ./workspace:/workspace
+
+    networks:
+      - beads-net
+
+
+volumes:
+  dev-home:
+  beads-web-home:
+
+
+networks:
+  beads-net:
+    driver: bridge

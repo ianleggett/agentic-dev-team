@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -ge 3 ]] || { echo "Usage: beads-handoff <bead-id> <worker-label> <stage-label> [comment]" >&2; exit 2; }
+ID="$1"; WORKER="$2"; STAGE="$3"; COMMENT="${4:-Handoff to $WORKER at $STAGE}"
+bd update "$ID" --add-label "$WORKER" --add-label "$STAGE" --json
+bd comment "$ID" "$COMMENT"
+bd show "$ID" --json

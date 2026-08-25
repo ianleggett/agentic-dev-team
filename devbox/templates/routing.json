@@ -1,0 +1,13 @@
+{
+  "worker:spec": "spec-writer",
+  "worker:architect": "solution-architect",
+  "worker:tech-lead": "tech-lead",
+  "worker:java": "java-dev",
+  "worker:frontend": "frontend-dev",
+  "worker:database": "database-dev",
+  "worker:devops": "devops",
+  "worker:qa": "qa-test",
+  "worker:review": "code-reviewer",
+  "worker:security": "security-reviewer",
+  "worker:docs": "docs-writer"
+}

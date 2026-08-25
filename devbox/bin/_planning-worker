@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROLE="${1:?role required}"
+INPUT="${2:-}"
+ROLE_FILE="/opt/agent-team/${ROLE}.md"
+COMMON_FILE="/opt/agent-team/_COMMON.md"
+[[ -f "$ROLE_FILE" ]] || { echo "Role file missing: $ROLE_FILE" >&2; exit 2; }
+[[ -d .git ]] || { echo "Run from repository root." >&2; exit 2; }
+EXTRA=""
+if [[ -n "$INPUT" ]]; then
+  if [[ -f "$INPUT" ]]; then EXTRA="Input file: $INPUT
+
+$(cat "$INPUT")"; else EXTRA="User input:
+$INPUT"; fi
+fi
+exec opencode run "$(cat "$COMMON_FILE")
+
+--- ROLE ---
+$(cat "$ROLE_FILE")
+
+$EXTRA"
