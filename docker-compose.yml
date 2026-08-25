@@ -67,7 +67,7 @@ services:
     container_name: beads-ui
     restart: unless-stopped
 
-    working_dir: /workspace/org-chart
+    working_dir: /workspace
 
     environment:
       HOME: /home/developer
