@@ -7,6 +7,8 @@
 # Security:
 #   - Reproducible npm install via package-lock.json
 #   - npm lifecycle scripts disabled during initial install
+#   - vulnerable transitive dependencies updated within declared
+#     semver ranges (no overrides, no major bumps) before auditing
 #   - npm vulnerability audit
 #   - npm signature/provenance verification
 #   - lifecycle scripts logged before execution
@@ -55,6 +57,25 @@ RUN apt-get update && \
         jq \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
+
+
+# -----------------------------------------------------------------------------
+# Pin the npm version
+#
+# node:22 ships npm 10.x, whose arborist cannot update scoped
+# transitive dependencies in the beads-ui tree (crashes with
+# "Cannot read properties of null (reading 'edgesOut')").
+#
+# The pinned npm 11 line performs the scoped update correctly.
+# -----------------------------------------------------------------------------
+
+ARG NPM_VERSION=11.20.0
+
+RUN echo "============================================================" && \
+    echo " Installing npm ${NPM_VERSION}" && \
+    echo "============================================================" && \
+    npm install -g "npm@${NPM_VERSION}" && \
+    npm --version
 
 
 # -----------------------------------------------------------------------------
@@ -123,6 +144,58 @@ RUN echo "============================================================" && \
     echo " Lifecycle scripts: DISABLED" && \
     echo "============================================================" && \
     npm ci --ignore-scripts
+
+
+# -----------------------------------------------------------------------------
+# Repair vulnerable transitive dependencies
+#
+# The upstream package-lock.json pins transitive dependencies for which
+# security fixes have been published. All fixes fall WITHIN the semver
+# ranges already declared by their parent packages, so a scoped
+# "npm update" resolves them without:
+#
+#   - changing any direct dependency version
+#   - introducing new packages
+#   - using "overrides"
+#
+# Only the vulnerable packages are touched. Every change is logged to
+# security-reports before the audit gate runs.
+#
+# Known advisories (beads-ui main @ b1d519a, beads-ui 0.12.6):
+#
+#   HIGH     brace-expansion  GHSA-q2hr-2g5m-vwhr (<1.1.21, <2.1.7)
+#   HIGH     brace-expansion  GHSA-qhr7-859c-m2p7 (<1.1.20, <2.1.6)
+#   HIGH     brace-expansion  GHSA-6j4f-fj2g-mc7p (<1.1.19, <2.1.5)
+#   HIGH     js-yaml          GHSA-2883-xcg3-v3hh (<4.3.2)
+#   MODERATE @humanfs/node    GHSA-p498-v437-472g (<0.16.8)
+#   MODERATE qs               GHSA-x5fp-wj9c-mxmx (<=6.15.3)
+#   MODERATE qs               GHSA-4mjr-xmp4-gh2g (<6.16.0)
+#   MODERATE vitest /
+#            @vitest/mocker   GHSA-82fw-gwwq-j7x9 (<4.1.11)
+#
+# Remove this step once upstream beads-ui ships a lockfile that already
+# contains the fixed versions.
+# -----------------------------------------------------------------------------
+
+RUN set -eu; \
+    echo "============================================================"; \
+    echo " Updating vulnerable transitive dependencies"; \
+    echo " (scoped, within declared semver ranges)"; \
+    echo "============================================================"; \
+    npm ls brace-expansion js-yaml qs @humanfs/node vitest \
+        > /opt/beads-ui/security-reports/dep-versions-before.log 2>&1 || true; \
+    npm update brace-expansion js-yaml qs @humanfs/node vitest \
+        --ignore-scripts --no-audit --no-fund; \
+    npm ls brace-expansion js-yaml qs @humanfs/node vitest \
+        > /opt/beads-ui/security-reports/dep-versions-after.log 2>&1 || true; \
+    echo ""; \
+    echo "Version changes:"; \
+    diff -u \
+        /opt/beads-ui/security-reports/dep-versions-before.log \
+        /opt/beads-ui/security-reports/dep-versions-after.log || true; \
+    echo "============================================================"; \
+    echo " Dependency repair complete"; \
+    echo "============================================================"
 
 
 # -----------------------------------------------------------------------------
