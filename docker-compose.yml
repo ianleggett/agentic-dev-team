@@ -64,9 +64,19 @@ services:
       # Your existing external Gitea
       GITEA_URL: ${GITEA_URL}
 
+      # SSH key used for git access to Gitea.
+      #
+      # SSH_GITEA_KEY points at the PRIVATE key on the host (default
+      # ~/.ssh/gitea). Its .pub half is registered in Gitea. Only this
+      # single file is mounted, read-only.
+      #
+      # "accept-new" pins Gitea's host key on first connect (TOFU);
+      # afterwards it is verified from /home/developer/.ssh/known_hosts.
+      GIT_SSH_COMMAND: "ssh -i /home/developer/.ssh/gitea -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+
     volumes:
       - ./workspace:/workspace
-      - ${HOME}/.ssh:/home/developer/.ssh:ro
+      - ${SSH_GITEA_KEY:-${HOME}/.ssh/gitea}:/home/developer/.ssh/gitea:ro
 
     tty: true
     stdin_open: true

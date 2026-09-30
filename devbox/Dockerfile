@@ -84,7 +84,8 @@ RUN set -eux; \
     usermod --shell /bin/bash developer; \
     echo "developer ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/developer; \
     chmod 0440 /etc/sudoers.d/developer; \
-    mkdir -p /workspace /home/developer/.local/bin; \
+    mkdir -p /workspace /home/developer/.local/bin /home/developer/.ssh; \
+    chmod 0700 /home/developer/.ssh; \
     chown -R "${USER_UID}:${USER_GID}" /workspace /home/developer
 
 # -----------------------------------------------------------------------------

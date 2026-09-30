@@ -315,9 +315,35 @@ NPM_AUDIT_LEVEL=high
 
 Do **not** commit API keys, SSH private keys or other credentials.
 
-The current Compose configuration mounts the host SSH directory
-read-only into the devbox. For shared or production-like environments, a
-dedicated development key is preferable.
+#### Gitea SSH access
+
+The devbox reaches Gitea over SSH with a single dedicated key. Only the
+private key file is mounted into the container, read-only.
+
+On the host, create a dedicated keypair and register the public half in
+Gitea (User Settings → Public Keys):
+
+``` bash
+ssh-keygen -t ed25519 -f ~/.ssh/gitea -C "yaadt-devbox"
+```
+
+The private key `~/.ssh/gitea` is mounted at
+`/home/developer/.ssh/gitea`. Point `SSH_GITEA_KEY` at a different key
+if yours is not there:
+
+``` dotenv
+SSH_GITEA_KEY=/home/you/.ssh/gitea
+```
+
+The Compose file sets `GIT_SSH_COMMAND` so git always uses this key with
+`StrictHostKeyChecking=accept-new`: Gitea's host key is pinned on first
+connect (TOFU) and verified on every connect afterwards. Remotes use
+`host.docker.internal` (see `extra_hosts`) and Gitea's SSH port
+(2222 by default on a host):
+
+``` bash
+git remote add origin ssh://git@host.docker.internal:2222/org/repo.git
+```
 
 ### 3. Build
 
