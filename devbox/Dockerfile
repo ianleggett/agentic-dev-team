@@ -292,12 +292,14 @@ mkdir -p \
   /home/developer/.config/opencode \
   /home/developer/.cache/opencode \
   /home/developer/.cache/cocoindex \
-  /home/developer/.local/share/cocoindex
+  /home/developer/.local/share/cocoindex \
+  /tmp/opencode
 
 chown -R "${DEV_UID}:${DEV_GID}" \
   /home/developer/.local \
   /home/developer/.config \
-  /home/developer/.cache
+  /home/developer/.cache \
+  /tmp/opencode
 
 if [[ "${FIX_WORKSPACE_PERMISSIONS}" == "true" ]] && [[ -d /workspace ]]; then
   echo "Checking bind-mounted workspace ownership..."
