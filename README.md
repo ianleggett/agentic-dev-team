@@ -759,6 +759,20 @@ Configure the OpenCode MCP integration with:
 configure-cocoindex-opencode
 ```
 
+This also writes the worker permission block into the global OpenCode
+config (`~/.config/opencode/opencode.json`). Workers run non-interactively
+(`opencode run`), where permission prompts are auto-rejected, so the block
+pre-authorises:
+
+-   `external_directory` access for `/opt/agent-team/**` (team policy
+    files such as `_COMMON.md`), `/workspace/**` (shared Beads database
+    and sibling projects) and `/tmp/**` (scratch space);
+-   `bash` and `edit`, so workers can run the development toolchain
+    (`bd`, `git`, builds, tests) and modify project code.
+
+This matches the intended security model: the devbox container is the
+isolation boundary and agents run as the unprivileged `developer` user.
+
 For a repository:
 
 ``` bash

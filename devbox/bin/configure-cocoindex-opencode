@@ -23,13 +23,21 @@ jq '
   .mcp["cocoindex-code"] = {
     "type": "local",
     "command": ["ccc", "mcp"]
-  }
+  } |
+  .permission = (.permission // {}) |
+  .permission.external_directory =
+    ((.permission.external_directory // {})
+     | .["/opt/agent-team/**"] = "allow"
+     | .["/workspace/**"] = "allow"
+     | .["/tmp/**"] = "allow") |
+  .permission.bash = (.permission.bash // "allow") |
+  .permission.edit = (.permission.edit // "allow")
 ' "$CONFIG_FILE" > "$TMP"
 
 mv "$TMP" "$CONFIG_FILE"
 trap - EXIT
 
-echo "CocoIndex Code MCP configured in:"
+echo "OpenCode MCP + worker permissions configured in:"
 echo "  $CONFIG_FILE"
 echo
-jq '.mcp["cocoindex-code"]' "$CONFIG_FILE"
+jq '{mcp: .mcp["cocoindex-code"], permission: .permission}' "$CONFIG_FILE"
