@@ -766,7 +766,9 @@ pre-authorises:
 
 -   `external_directory` access for `/opt/agent-team/**` (team policy
     files such as `_COMMON.md`), `/workspace/**` (shared Beads database
-    and sibling projects) and `/tmp/**` (scratch space);
+    and sibling projects), `/tmp/**` (scratch space) and
+    `/home/developer/**` (npm/corepack caches, `~/.local` binaries,
+    Playwright browser cache);
 -   `bash` and `edit`, so workers can run the development toolchain
     (`bd`, `git`, builds, tests) and modify project code.
 

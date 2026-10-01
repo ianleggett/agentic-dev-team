@@ -29,7 +29,8 @@ jq '
     ((.permission.external_directory // {})
      | .["/opt/agent-team/**"] = "allow"
      | .["/workspace/**"] = "allow"
-     | .["/tmp/**"] = "allow") |
+     | .["/tmp/**"] = "allow"
+     | .["/home/developer/**"] = "allow") |
   .permission.bash = (.permission.bash // "allow") |
   .permission.edit = (.permission.edit // "allow")
 ' "$CONFIG_FILE" > "$TMP"

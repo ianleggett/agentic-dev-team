@@ -5,6 +5,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NPM_AUDIT_LEVEL=high
 ARG COCOINDEX_CODE_VERSION=0.2.39
+ARG PNPM_VERSION=10.12.1
 
 ENV DEV_UID=${USER_UID}
 ENV DEV_GID=${USER_GID}
@@ -55,6 +56,13 @@ RUN node --version && \
     java -version && \
     mvn -version && \
     git --version
+
+# -----------------------------------------------------------------------------
+# pnpm - pinned global package manager for pnpm-based projects
+# -----------------------------------------------------------------------------
+
+RUN npm install -g --ignore-scripts "pnpm@${PNPM_VERSION}" && \
+    pnpm --version
 
 # -----------------------------------------------------------------------------
 # Create/reuse developer account matching host UID/GID
@@ -293,12 +301,14 @@ mkdir -p \
   /home/developer/.cache/opencode \
   /home/developer/.cache/cocoindex \
   /home/developer/.local/share/cocoindex \
+  /home/developer/.npm \
   /tmp/opencode
 
 chown -R "${DEV_UID}:${DEV_GID}" \
   /home/developer/.local \
   /home/developer/.config \
   /home/developer/.cache \
+  /home/developer/.npm \
   /tmp/opencode
 
 if [[ "${FIX_WORKSPACE_PERMISSIONS}" == "true" ]] && [[ -d /workspace ]]; then

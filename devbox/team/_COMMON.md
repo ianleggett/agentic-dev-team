@@ -11,7 +11,12 @@ Do not initialise separate `.beads` databases inside child repositories.
 Use `BEADS_DIR=/workspace/.beads` for all Beads commands.
 
 Workers use Beads for durable tasks, dependencies, labels, handoffs and `bd remember`.
-CocoIndex is for semantic code discovery; Git remains the source-code/history system.
+
+## Code discovery
+
+For conceptual code questions ("where is X", "how does Y work"), use CocoIndex
+Code semantic search first. Use ripgrep for exact symbol/string matches. Always
+inspect the actual source before editing. Git remains the source-code/history system.
 
 ## Worker labels
 `worker:spec`, `worker:architect`, `worker:tech-lead`, `worker:java`,
