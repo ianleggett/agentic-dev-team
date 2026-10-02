@@ -199,12 +199,8 @@ RUN mkdir -p /opt/cocoindex-code/security-reports && \
         exit "${AUDIT_EXIT}"; \
     fi
 
-RUN /opt/cocoindex-code/bin/python -c "from mcp.server.mcpserver import MCPServer" && \
+RUN /opt/cocoindex-code/bin/python -c "from cocoindex_code.server import create_mcp_server; create_mcp_server('/tmp')" && \
     /opt/cocoindex-code/bin/ccc --help >/dev/null && \
-    /opt/cocoindex-code/bin/ccc mcp < /dev/null > /tmp/ccc-mcp.log 2>&1; \
-    RC=$?; \
-    cat /tmp/ccc-mcp.log; \
-    if [ "${RC}" -ne 0 ]; then echo "CocoIndex MCP server startup check FAILED"; exit 1; fi; \
     chown -R "${USER_UID}:${USER_GID}" /opt/cocoindex-code
 
 # -----------------------------------------------------------------------------
