@@ -25,14 +25,17 @@ jq '
     "command": ["ccc", "mcp"]
   } |
   .permission = (.permission // {}) |
-  .permission.external_directory =
-    ((.permission.external_directory // {})
-     | .["/opt/agent-team/**"] = "allow"
-     | .["/workspace/**"] = "allow"
-     | .["/tmp/**"] = "allow"
-     | .["/home/developer/**"] = "allow") |
-  .permission.bash = (.permission.bash // "allow") |
-  .permission.edit = (.permission.edit // "allow")
+  .permission.external_directory = {
+    "/opt/agent-team/**": "allow",
+    "/opt/agent-team/*": "allow",
+    "/opt/agent-team": "allow",
+    "/workspace/**": "allow",
+    "/workspace/*": "allow",
+    "/tmp/**": "allow",
+    "/home/developer/**": "allow"
+  } |
+  .permission.bash = "allow" |
+  .permission.edit = "allow"
 ' "$CONFIG_FILE" > "$TMP"
 
 mv "$TMP" "$CONFIG_FILE"
@@ -41,4 +44,4 @@ trap - EXIT
 echo "OpenCode MCP + worker permissions configured in:"
 echo "  $CONFIG_FILE"
 echo
-jq '{mcp: .mcp["cocoindex-code"], permission: .permission}' "$CONFIG_FILE"
+jq '{mcp: (.mcp | keys), permission: .permission}' "$CONFIG_FILE"

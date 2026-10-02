@@ -14,16 +14,30 @@ command -v bd >/dev/null || die "bd not found"
 command -v opencode >/dev/null || die "opencode not found"
 bd prime >/tmp/bd-prime.txt
 
-if [[ -n "$TARGET" ]]; then
-  ISSUE="$(bd show "$TARGET" --json)"
-else
-  ISSUE="$(bd ready --json | jq --arg w "$WORKER_LABEL" '
+if [[ -z "$TARGET" ]]; then
+  CANDIDATES="$(bd ready --json | jq -r --arg w "$WORKER_LABEL" '
     [.[] |
       select(((.labels // []) | index($w)) != null) |
       select([(.labels // [])[] | select(startswith("project:"))] | length == 1)
-    ] | sort_by(.priority // 2) | .[0] // empty')"
-  [[ -n "$ISSUE" ]] || { echo "No ready ${WORKER_LABEL} bead with exactly one project:* label."; exit 0; }
+    ] | sort_by(.priority // 2) | .[0:8][] | .id')"
+  if [[ -z "$CANDIDATES" ]]; then
+    echo "No ready ${WORKER_LABEL} bead with exactly one project:* label."
+    exit 0
+  fi
+  for CANDIDATE in $CANDIDATES; do
+    if bd update "$CANDIDATE" --claim >/dev/null 2>&1; then
+      echo "Claimed bead $CANDIDATE for $ROLE"
+      TARGET="$CANDIDATE"
+      break
+    fi
+  done
+  if [[ -z "$TARGET" ]]; then
+    echo "No claimable ready ${WORKER_LABEL} bead: matching beads are already claimed (live or stale); skipping."
+    exit 0
+  fi
 fi
+
+ISSUE="$(bd show "$TARGET" --json)"
 
 PROJECT_LABEL="$(printf '%s' "$ISSUE" | jq -r '
   (if type=="array" then .[0] else . end) |
@@ -35,7 +49,7 @@ PROJECT="${PROJECT_LABEL#project:}"
 PROJECT_DIR="$ROOT/$PROJECT"
 [[ -d "$PROJECT_DIR/.git" ]] || die "Git repository not found: $PROJECT_DIR"
 
-ID="$(printf '%s' "$ISSUE" | jq -r 'if type=="array" then .[0].id else .id end')"
+ID="$TARGET"
 cd "$PROJECT_DIR"
 
 if command -v ccc >/dev/null 2>&1 && [[ -d .cocoindex_code || -d .cocoindex ]]; then
@@ -58,6 +72,6 @@ $ISSUE
 Beads context:
 $(cat /tmp/bd-prime.txt)
 
-Claim $ID atomically before editing. Work only in $PROJECT_DIR unless the bead explicitly
-requires otherwise. Do not create a local .beads directory. Leave a durable Beads handoff
-comment and stop after this bead."
+$ID is already claimed by this run; do not re-claim or re-assign it. Work only in $PROJECT_DIR
+unless the bead explicitly requires otherwise. Do not create a local .beads directory. Leave
+a durable Beads handoff comment and stop after this bead."
