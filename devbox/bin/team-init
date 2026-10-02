@@ -28,4 +28,5 @@ Plan:
 Run:
   team-status
   java-dev
+  team-autorun
 EOF

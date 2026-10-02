@@ -5,6 +5,7 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NPM_AUDIT_LEVEL=high
 ARG COCOINDEX_CODE_VERSION=0.2.39
+ARG MCP_VERSION=1.9.4
 ARG PNPM_VERSION=10.12.1
 
 ENV DEV_UID=${USER_UID}
@@ -167,10 +168,16 @@ RUN npm rebuild && \
 # CocoIndex Code FULL - pinned and security gated
 # -----------------------------------------------------------------------------
 
+# cocoindex-code 0.2.39 declares "mcp>=1.0.0" and still does
+# "from mcp.server.fastmcp import FastMCP". Unconstrained resolution picks
+# mcp 2.x, which renamed FastMCP to MCPServer: ccc mcp then crashes on
+# startup and OpenCode exposes no cocoindex-code tools. Pin to the last
+# 1.x release; drop the pin if cocoindex-code adopts the mcp 2.x API.
 RUN python3 -m venv /opt/cocoindex-code && \
     /opt/cocoindex-code/bin/python -m pip install --upgrade pip setuptools wheel && \
     /opt/cocoindex-code/bin/pip install \
-        "cocoindex-code[full]==${COCOINDEX_CODE_VERSION}"
+        "cocoindex-code[full]==${COCOINDEX_CODE_VERSION}" \
+        "mcp==${MCP_VERSION}"
 
 RUN python3 -m venv /opt/python-security-tools && \
     /opt/python-security-tools/bin/python -m pip install --upgrade pip && \
@@ -192,7 +199,8 @@ RUN mkdir -p /opt/cocoindex-code/security-reports && \
         exit "${AUDIT_EXIT}"; \
     fi
 
-RUN /opt/cocoindex-code/bin/ccc --help >/dev/null && \
+RUN /opt/cocoindex-code/bin/python -c "from mcp.server.fastmcp import FastMCP" && \
+    /opt/cocoindex-code/bin/ccc --help >/dev/null && \
     chown -R "${USER_UID}:${USER_GID}" /opt/cocoindex-code
 
 # -----------------------------------------------------------------------------
@@ -220,6 +228,7 @@ COPY bin/docs-writer /usr/local/bin/docs-writer
 COPY bin/team-status /usr/local/bin/team-status
 COPY bin/team-init /usr/local/bin/team-init
 COPY bin/team-run-one /usr/local/bin/team-run-one
+COPY bin/team-autorun /usr/local/bin/team-autorun
 COPY bin/beads-handoff /usr/local/bin/beads-handoff
 COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
 COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
@@ -244,6 +253,7 @@ RUN chmod 0755 \
       /usr/local/bin/team-status \
       /usr/local/bin/team-init \
       /usr/local/bin/team-run-one \
+      /usr/local/bin/team-autorun \
       /usr/local/bin/beads-handoff \
       /usr/local/bin/project-add \
       /usr/local/bin/project-list \

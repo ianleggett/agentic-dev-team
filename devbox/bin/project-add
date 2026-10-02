@@ -8,18 +8,21 @@ P="$1"; DESC="${2:-Project repository at /workspace/$P}"
 DIR="$ROOT/$P"; [[ -d "$DIR/.git" ]] || { echo "Git repo not found: $DIR" >&2; exit 2; }
 LABEL="project:$P"
 
-check_index() {
-  if [[ ! -e "$DIR/.cocoindex_code" && ! -e "$DIR/.cocoindex" ]]; then
-    echo
-    echo "NOTE: no CocoIndex Code index found in $DIR; agent semantic search will not work."
-    echo "Run inside the devbox:"
-    echo "  cd $DIR && cocoindex-project-init"
+ensure_index() {
+  if [[ -e "$DIR/.cocoindex_code" || -e "$DIR/.cocoindex" ]]; then
+    return 0
+  fi
+  if command -v cocoindex-project-init >/dev/null 2>&1; then
+    echo "No CocoIndex Code index found; building one (first run may prompt for embedding choices)..."
+    (cd "$DIR" && cocoindex-project-init)
+  else
+    echo "NOTE: no CocoIndex Code index found in $DIR and cocoindex-project-init is unavailable." >&2
   fi
 }
 
 EXISTING="$(bd list --json | jq -r --arg l "$LABEL" '
  .[] | select((.issue_type=="epic" or .type=="epic") and (((.labels//[])|index($l))!=null)) | .id' | head -1)"
-[[ -z "$EXISTING" ]] || { echo "Already registered: $EXISTING"; bd show "$EXISTING" --json; check_index; exit 0; }
+[[ -z "$EXISTING" ]] || { echo "Already registered: $EXISTING"; bd show "$EXISTING" --json; ensure_index; exit 0; }
 REMOTE="$(git -C "$DIR" remote get-url origin 2>/dev/null || true)"
 bd create "Project: $P" -t epic --labels "$LABEL" \
  --description "$DESC
@@ -28,4 +31,4 @@ Project root: $DIR
 Git remote: ${REMOTE:-not configured}
 Project label: $LABEL" --json
 
-check_index
+ensure_index

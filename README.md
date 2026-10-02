@@ -782,6 +782,13 @@ cd /workspace/my-project
 cocoindex-project-init
 ```
 
+`project-add <name>` now runs `cocoindex-project-init` automatically
+when the project has no index (first run may prompt for embedding
+choices). Each worker run also refreshes the project's index
+incrementally, capped at 5 minutes, before launching the agent; if the
+refresh fails the run continues with a warning and the agent falls back
+to ripgrep/read.
+
 Example direct search:
 
 ``` bash
@@ -877,6 +884,7 @@ security-reviewer [bead]
 docs-writer [bead]
 
 team-run-one <worker>
+team-autorun [--max N] [--watch] [--sleep SECONDS]
 
 beads-handoff \
   <bead-id> \
@@ -1012,7 +1020,9 @@ fully autonomous engineering platform.
 
 In particular:
 
--   workers are primarily launched explicitly;
+-   workers are launched explicitly or by the bounded round-robin
+    dispatcher `team-autorun`, which takes no responsibility for
+    per-bead parallel safety (one run per worker per round);
 -   parallel workers need additional branch/worktree coordination;
 -   automatic pull-request creation and merge policy are not yet the
     core workflow;
@@ -1027,8 +1037,9 @@ changes.
 
 Useful next steps include:
 
--   [ ] dispatcher/orchestrator for automatically launching ready
-    workers;
+-   [x] dispatcher/orchestrator for automatically launching ready
+    workers (`team-autorun`; bounded rounds + `--watch` mode; per-bead
+    worktrees and worker concurrency limits remain open);
 -   [ ] one Git branch/worktree per Bead;
 -   [ ] safe parallel worker execution;
 -   [ ] automatic Gitea/GitHub pull-request creation;

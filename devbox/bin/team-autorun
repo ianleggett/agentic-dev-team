@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+
+usage() {
+  echo "Usage: team-autorun [--max <rounds>] [--watch] [--sleep <seconds>]" >&2
+  exit 2
+}
+
+MAX=50
+WATCH=false
+SLEEP_SECONDS=30
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --max) [[ $# -ge 2 ]] || usage; MAX="$2"; shift 2 ;;
+    --watch) WATCH=true; shift ;;
+    --sleep) [[ $# -ge 2 ]] || usage; SLEEP_SECONDS="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+[[ -d "$BEADS_DIR" ]] || { echo "Shared Beads DB missing: $BEADS_DIR (run team-init first)" >&2; exit 2; }
+
+routable_count() {
+  bd ready --json | jq -r '
+    [.[] |
+      [(.labels//[])[] | select(startswith("project:"))] as $p |
+      [(.labels//[])[] | select(startswith("worker:"))] as $w |
+      select(($p|length)==1 and ($w|length)==1)
+    ] | length'
+}
+
+run_round() {
+  local worker
+  for worker in spec-writer solution-architect tech-lead \
+                java-dev frontend-dev database-dev devops \
+                qa-test code-reviewer security-reviewer docs-writer; do
+    command -v "$worker" >/dev/null 2>&1 || continue
+    echo "--- $(date '+%H:%M:%S') $worker ---"
+    "$worker" || true
+  done
+}
+
+if [[ "$WATCH" == "true" ]]; then
+  while true; do
+    if [[ "$(routable_count)" != "0" ]]; then
+      run_round
+    else
+      sleep "$SLEEP_SECONDS"
+    fi
+  done
+fi
+
+ROUND=0
+while (( ROUND < MAX )); do
+  ROUTABLE="$(routable_count)"
+  if [[ "$ROUTABLE" == "0" ]]; then
+    echo "No routable ready beads; stopping."
+    break
+  fi
+  ROUND=$((ROUND + 1))
+  echo "=== Round $ROUND/$MAX: $ROUTABLE routable ready bead(s) ==="
+  run_round
+done

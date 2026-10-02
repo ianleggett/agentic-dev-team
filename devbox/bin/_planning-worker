@@ -20,6 +20,10 @@ if [[ -n "$PROJECT" ]]; then
   DIR="$ROOT/$PROJECT"
   [[ -d "$DIR/.git" ]] || { echo "Project repo not found: $DIR" >&2; exit 2; }
   cd "$DIR"
+  if command -v ccc >/dev/null 2>&1 && [[ -d .cocoindex_code || -d .cocoindex ]]; then
+    echo "Refreshing CocoIndex Code index..."
+    timeout 300 ccc index || echo "WARNING: CocoIndex index refresh failed; agent will rely on ripgrep/read." >&2
+  fi
   CONTEXT="Project label: project:$PROJECT
 Repository: $DIR
 All Beads work created for this project must carry project:$PROJECT."

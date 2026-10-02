@@ -25,6 +25,9 @@ qa-test
 code-reviewer
 security-reviewer
 docs-writer
+
+# Or dispatch the ready queues automatically (bounded rounds; --watch for continuous)
+team-autorun --max 10
 ```
 
 Workers are intentionally one-shot so each run has bounded context. Durable state and handoffs remain in Beads.
