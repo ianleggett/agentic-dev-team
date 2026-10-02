@@ -4,8 +4,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG NPM_AUDIT_LEVEL=high
-ARG COCOINDEX_CODE_VERSION=0.2.39
-ARG MCP_VERSION=1.9.4
+ARG COCOINDEX_CODE_VERSION=0.2.41
+ARG MCP_VERSION=2.2.0
 ARG PNPM_VERSION=10.12.1
 
 ENV DEV_UID=${USER_UID}
@@ -168,11 +168,11 @@ RUN npm rebuild && \
 # CocoIndex Code FULL - pinned and security gated
 # -----------------------------------------------------------------------------
 
-# cocoindex-code 0.2.39 declares "mcp>=1.0.0" and still does
-# "from mcp.server.fastmcp import FastMCP". Unconstrained resolution picks
-# mcp 2.x, which renamed FastMCP to MCPServer: ccc mcp then crashes on
-# startup and OpenCode exposes no cocoindex-code tools. Pin to the last
-# 1.x release; drop the pin if cocoindex-code adopts the mcp 2.x API.
+# cocoindex-code must agree with the mcp Python SDK API it imports.
+# 0.2.39 (FastMCP import) + mcp 2.x crashes on startup (class renamed to
+# MCPServer), which silently strips cocoindex-code from OpenCode; and every
+# mcp below 1.28.1 carries known CVEs (PYSEC-2026-1617/1618/3482/3483).
+# 0.2.41 uses the new MCPServer API, so pin the pair together.
 RUN python3 -m venv /opt/cocoindex-code && \
     /opt/cocoindex-code/bin/python -m pip install --upgrade pip setuptools wheel && \
     /opt/cocoindex-code/bin/pip install \
@@ -199,8 +199,12 @@ RUN mkdir -p /opt/cocoindex-code/security-reports && \
         exit "${AUDIT_EXIT}"; \
     fi
 
-RUN /opt/cocoindex-code/bin/python -c "from mcp.server.fastmcp import FastMCP" && \
+RUN /opt/cocoindex-code/bin/python -c "from mcp.server.mcpserver import MCPServer" && \
     /opt/cocoindex-code/bin/ccc --help >/dev/null && \
+    /opt/cocoindex-code/bin/ccc mcp < /dev/null > /tmp/ccc-mcp.log 2>&1; \
+    RC=$?; \
+    cat /tmp/ccc-mcp.log; \
+    if [ "${RC}" -ne 0 ]; then echo "CocoIndex MCP server startup check FAILED"; exit 1; fi; \
     chown -R "${USER_UID}:${USER_GID}" /opt/cocoindex-code
 
 # -----------------------------------------------------------------------------
