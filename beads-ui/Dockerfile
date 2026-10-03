@@ -122,6 +122,11 @@ WORKDIR /opt/beads-ui
 
 RUN mkdir -p /opt/beads-ui/security-reports
 
+# These are not application source: security reports and Beads test metadata
+# are generated during the image build. CHANGES.md is upstream release text
+# and is not formatted by the current upstream validation suite.
+RUN printf 'security-reports/\n.beads/\nCHANGES.md\n' > /opt/beads-ui/.prettierignore
+
 
 # -----------------------------------------------------------------------------
 # Install npm dependencies
