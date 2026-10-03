@@ -156,7 +156,7 @@ services:
       TEAM_RUNS_PORT: 3008
       TEAM_WEB_MAX_LOG_BYTES: ${TEAM_WEB_MAX_LOG_BYTES:-200000}
     ports:
-      - "127.0.0.1:3008:3008"
+      - "3008:3008"
     volumes:
       - ./workspace:/workspace:ro
     command: ["team-runs-web"]
