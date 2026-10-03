@@ -918,6 +918,10 @@ worker leases and terminal states, while `team-requeue-stale --dry-run`
 previews expired leases before recovery. The companion Team Runs UI reads
 these records without modifying Beads.
 
+Beads comments made by workers use the worker role as the actor, such as
+`tech-lead` or `fullstack-dev`. Set `BEADS_ACTOR` explicitly when a different
+identity is required.
+
 ## Repository layout
 
 ``` text

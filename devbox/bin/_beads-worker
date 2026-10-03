@@ -5,6 +5,7 @@ WORKER_LABELS="${2:?worker label required}"
 TARGET="${3:-}"
 AUTO_CLAIM=false
 export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+export BEADS_ACTOR="${BEADS_ACTOR:-$ROLE}"
 ROOT="${WORKSPACE_ROOT:-/workspace}"
 ROLE_FILE="/opt/agent-team/${ROLE}.md"
 die(){ echo "ERROR: $*" >&2; exit 2; }

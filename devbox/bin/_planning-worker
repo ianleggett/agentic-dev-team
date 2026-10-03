@@ -2,6 +2,7 @@
 set -euo pipefail
 ROLE="${1:?role required}"; shift
 export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+export BEADS_ACTOR="${BEADS_ACTOR:-$ROLE}"
 ROOT="${WORKSPACE_ROOT:-/workspace}"
 ROLE_FILE="/opt/agent-team/${ROLE}.md"
 PROJECT=""; INPUT=""
