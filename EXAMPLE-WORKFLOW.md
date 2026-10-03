@@ -17,8 +17,7 @@ tech-lead docs/architecture/new-feature.md
 team-status
 
 # One-shot workers; rerun to take the next routed ready bead
-java-dev
-frontend-dev
+fullstack-dev
 database-dev
 devops
 qa-test

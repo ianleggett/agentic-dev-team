@@ -27,6 +27,6 @@ Plan:
 
 Run:
   team-status
-  java-dev
+  fullstack-dev
   team-autorun
 EOF

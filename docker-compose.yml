@@ -53,6 +53,10 @@ services:
       HOME: /home/developer
 
       BEADS_DIR: /workspace/.beads
+      TEAM_RUNS_DIR: /workspace/.team-runs
+      TEAM_HEARTBEAT_SECONDS: ${TEAM_HEARTBEAT_SECONDS:-20}
+      TEAM_LEASE_SECONDS: ${TEAM_LEASE_SECONDS:-90}
+      TEAM_MAX_EVENT_BYTES: ${TEAM_MAX_EVENT_BYTES:-12000}
 
       LLM_API_KEY: ${LLM_API_KEY:-}
 
@@ -120,6 +124,7 @@ services:
     environment:
       HOME: /home/developer
       BEADS_DIR: /workspace/.beads
+      TEAM_RUNS_DIR: /workspace/.team-runs
       BD_BIN: /usr/local/bin/bd
       HOST: 0.0.0.0
       PORT: 3007
@@ -130,6 +135,31 @@ services:
     volumes:
       - ./workspace:/workspace
 
+    networks:
+      - beads-net
+
+  team-runs-ui:
+    build:
+      context: ./devbox
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+        NPM_AUDIT_LEVEL: ${NPM_AUDIT_LEVEL:-high}
+
+    container_name: team-runs-ui
+    restart: unless-stopped
+    working_dir: /workspace
+    environment:
+      HOME: /home/developer
+      TEAM_RUNS_DIR: /workspace/.team-runs
+      TEAM_RUNS_HOST: 0.0.0.0
+      TEAM_RUNS_PORT: 3008
+      TEAM_WEB_MAX_LOG_BYTES: ${TEAM_WEB_MAX_LOG_BYTES:-200000}
+    ports:
+      - "127.0.0.1:3008:3008"
+    volumes:
+      - ./workspace:/workspace:ro
+    command: ["team-runs-web"]
     networks:
       - beads-net
 

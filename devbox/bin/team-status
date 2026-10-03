@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+export TEAM_RUNS_DIR="${TEAM_RUNS_DIR:-/workspace/.team-runs}"
 READY="$(bd ready --json)"
 printf '%-24s %-18s %s\n' PROJECT WORKER READY
 printf '%s' "$READY" | jq -r '
@@ -20,3 +21,9 @@ printf '%s' "$READY" | jq -r '
  [(.labels//[])[]|select(startswith("worker:"))] as $w |
  select(($p|length)!=1 or ($w|length)!=1) |
  "\(.id)\t\(.title)\tprojects=\($p|join(",")) workers=\($w|join(","))"'
+
+if command -v team-run-list >/dev/null 2>&1 && [[ -d "$TEAM_RUNS_DIR" ]]; then
+  echo
+  echo "Agent runs:"
+  team-run-list
+fi

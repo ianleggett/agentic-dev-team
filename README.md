@@ -164,11 +164,8 @@ conversation is intentionally **not** the project memory.
   -----------------------------------------------------------------------
   Command                 Primary Beads label     Responsibility
   ----------------------- ----------------------- -----------------------
-  `java-dev`              `worker:java`           Java/Spring/backend
-                                                  implementation
-
-  `frontend-dev`          `worker:frontend`       React/Vite/frontend
-                                                  implementation
+  `fullstack-dev`         `worker:fullstack`      End-to-end Java/Spring and
+                                                  React/Vite implementation
 
   `database-dev`          `worker:database`       Schema, migrations and
                                                   persistence
@@ -242,8 +239,7 @@ Tasks are routed with labels.
 worker:spec
 worker:architect
 worker:tech-lead
-worker:java
-worker:frontend
+worker:fullstack
 worker:database
 worker:devops
 worker:qa
@@ -281,8 +277,12 @@ Implementation workers inspect `bd ready --json` and select work
 carrying their `worker:*` label. A specific Bead can also be supplied
 explicitly.
 
+`fullstack-dev` is the single product implementation worker. During the
+transition it also consumes existing `worker:java` and `worker:frontend`
+beads; new work should use `worker:fullstack`.
+
 ``` bash
-java-dev bd-a1b2
+fullstack-dev bd-a1b2
 qa-test bd-a1b2
 code-reviewer bd-a1b2
 ```
@@ -371,6 +371,17 @@ The Beads UI is exposed on:
 ``` text
 http://localhost:3007
 ```
+
+The Team Runs UI is exposed on:
+
+```text
+http://localhost:3008
+```
+
+It shows active and historical worker runs plus redacted OpenCode output. It
+is currently a companion view because this repository builds `beads-ui` from
+the upstream repository; the run-record API is intentionally small and is a
+candidate for an upstream `beads-ui` Runs/Agents integration.
 
 ### 5. Enter the devbox
 
@@ -657,7 +668,7 @@ YAADT/OpenCode├── remote vLLM
              └── hosted model provider
 ```
 
-Changing provider should not require changing `java-dev`, `tech-lead`, `qa-test`, or the other agent scripts.
+Changing provider should not require changing `fullstack-dev`, `tech-lead`, `qa-test`, or the other agent scripts.
 
 ### Credentials
 
@@ -842,8 +853,7 @@ Run workers:
 
 ``` bash
 database-dev
-java-dev
-frontend-dev
+fullstack-dev
 ```
 
 Then quality workers:
@@ -858,7 +868,7 @@ docs-writer
 Or target one task explicitly:
 
 ``` bash
-java-dev bd-a1b2
+fullstack-dev bd-a1b2
 ```
 
 Re-running a worker lets it take the next matching ready task.
@@ -873,8 +883,7 @@ spec-writer <input>
 solution-architect <spec>
 tech-lead <architecture-or-spec>
 
-java-dev [bead]
-frontend-dev [bead]
+fullstack-dev [bead]
 database-dev [bead]
 devops [bead]
 
@@ -885,6 +894,8 @@ docs-writer [bead]
 
 team-run-one <worker>
 team-autorun [--max N] [--watch] [--sleep SECONDS]
+team-run-list [--json]
+team-requeue-stale [--dry-run]
 
 beads-handoff \
   <bead-id> \
@@ -902,6 +913,11 @@ bd show <id> --json
 bd update <id> --claim --json
 ```
 
+Run records are stored under `/workspace/.team-runs`. `team-run-list` shows
+worker leases and terminal states, while `team-requeue-stale --dry-run`
+previews expired leases before recovery. The companion Team Runs UI reads
+these records without modifying Beads.
+
 ## Repository layout
 
 ``` text
@@ -914,8 +930,7 @@ agentic-dev-team/
 │   │   ├── spec-writer
 │   │   ├── solution-architect
 │   │   ├── tech-lead
-│   │   ├── java-dev
-│   │   ├── frontend-dev
+│   │   ├── fullstack-dev
 │   │   ├── database-dev
 │   │   ├── devops
 │   │   ├── qa-test

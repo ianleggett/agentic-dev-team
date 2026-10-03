@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export TEAM_RUNS_DIR="${TEAM_RUNS_DIR:-/workspace/.team-runs}"
+TEAM_RUN_BIN="${TEAM_RUN_BIN:-/usr/local/libexec/_team-run}"
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
+
+FORMAT="table"
+[[ "${1:-}" == "--json" ]] && FORMAT="json"
+RUNS="$($TEAM_RUN_BIN list)"
+
+if [[ "$FORMAT" == "json" ]]; then
+  printf '%s\n' "$RUNS"
+  exit 0
+fi
+
+printf '%-24s %-14s %-16s %-14s %-10s %s\n' RUN_ID ROLE BEAD STATE HEARTBEAT PROJECT
+printf '%s' "$RUNS" | jq -r '.[] | [(.run_id|.[0:23]), .role, .bead_id, .state, (.last_heartbeat_at // "-"), .project] | @tsv' | \
+  awk -F '\t' '{printf "%-24s %-14s %-16s %-14s %-10s %s\n", $1,$2,$3,$4,$5,$6}'

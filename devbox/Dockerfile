@@ -216,8 +216,7 @@ COPY bin/_planning-worker /usr/local/libexec/_planning-worker
 COPY bin/spec-writer /usr/local/bin/spec-writer
 COPY bin/solution-architect /usr/local/bin/solution-architect
 COPY bin/tech-lead /usr/local/bin/tech-lead
-COPY bin/java-dev /usr/local/bin/java-dev
-COPY bin/frontend-dev /usr/local/bin/frontend-dev
+COPY bin/fullstack-dev /usr/local/bin/fullstack-dev
 COPY bin/database-dev /usr/local/bin/database-dev
 COPY bin/devops /usr/local/bin/devops
 COPY bin/qa-test /usr/local/bin/qa-test
@@ -229,6 +228,10 @@ COPY bin/team-status /usr/local/bin/team-status
 COPY bin/team-init /usr/local/bin/team-init
 COPY bin/team-run-one /usr/local/bin/team-run-one
 COPY bin/team-autorun /usr/local/bin/team-autorun
+COPY bin/team-run-list /usr/local/bin/team-run-list
+COPY bin/team-requeue-stale /usr/local/bin/team-requeue-stale
+COPY bin/_team-run /usr/local/libexec/_team-run
+COPY bin/team-runs-web /usr/local/bin/team-runs-web
 COPY bin/beads-handoff /usr/local/bin/beads-handoff
 COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
 COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
@@ -242,8 +245,7 @@ RUN chmod 0755 \
       /usr/local/bin/spec-writer \
       /usr/local/bin/solution-architect \
       /usr/local/bin/tech-lead \
-      /usr/local/bin/java-dev \
-      /usr/local/bin/frontend-dev \
+      /usr/local/bin/fullstack-dev \
       /usr/local/bin/database-dev \
       /usr/local/bin/devops \
       /usr/local/bin/qa-test \
@@ -254,6 +256,10 @@ RUN chmod 0755 \
       /usr/local/bin/team-init \
       /usr/local/bin/team-run-one \
       /usr/local/bin/team-autorun \
+      /usr/local/bin/team-run-list \
+      /usr/local/bin/team-requeue-stale \
+      /usr/local/libexec/_team-run \
+      /usr/local/bin/team-runs-web \
       /usr/local/bin/beads-handoff \
       /usr/local/bin/project-add \
       /usr/local/bin/project-list \

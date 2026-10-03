@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+export TEAM_RUNS_DIR="${TEAM_RUNS_DIR:-/workspace/.team-runs}"
+TEAM_RUN_BIN="${TEAM_RUN_BIN:-/usr/local/libexec/_team-run}"
+
+DRY_RUN=false
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+command -v bd >/dev/null || { echo "bd is required" >&2; exit 2; }
+
+STALE="$($TEAM_RUN_BIN stale)"
+[[ -n "$STALE" ]] || { echo "No stale runs."; exit 0; }
+
+while IFS= read -r run; do
+  [[ -n "$run" ]] || continue
+  RUN_ID="$(printf '%s' "$run" | jq -r .run_id)"
+  BEAD_ID="$(printf '%s' "$run" | jq -r .bead_id)"
+  LABEL="run:${RUN_ID}"
+  COMMENT="Automatic recovery: run ${RUN_ID} expired its lease. The worker was abandoned and the bead was requeued."
+  echo "stale run=${RUN_ID} bead=${BEAD_ID}"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    continue
+  fi
+  "$TEAM_RUN_BIN" finish "$RUN_ID" abandoned 125 >/dev/null 2>&1 || true
+  ISSUE="$(bd show "$BEAD_ID" --json 2>/dev/null || true)"
+  HAS_LABEL="$(printf '%s' "$ISSUE" | jq -r --arg label "$LABEL" '((if type=="array" then .[0] else . end).labels // []) | index($label) != null' 2>/dev/null || printf false)"
+  [[ "$HAS_LABEL" == "true" ]] || { echo "skip ${BEAD_ID}: ownership label missing" >&2; continue; }
+  bd update "$BEAD_ID" --status open --assignee "" --remove-label "$LABEL" --json >/dev/null
+  bd comment "$BEAD_ID" "$COMMENT" >/dev/null
+  "$TEAM_RUN_BIN" event "$RUN_ID" lifecycle "bead requeued after expired lease" >/dev/null 2>&1 || true
+  "$TEAM_RUN_BIN" finish "$RUN_ID" requeued 125 >/dev/null 2>&1 || true
+done <<<"$STALE"

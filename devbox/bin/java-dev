@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-exec /usr/local/libexec/_beads-worker "java-dev" "worker:java" "${1:-}"

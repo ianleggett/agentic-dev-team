@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMMAND="${1:-}"
+RUN_ID="${2:-}"
+RUNS_DIR="${TEAM_RUNS_DIR:-/workspace/.team-runs}"
+HEARTBEAT_SECONDS="${TEAM_HEARTBEAT_SECONDS:-20}"
+MAX_EVENT_BYTES="${TEAM_MAX_EVENT_BYTES:-12000}"
+
+usage() {
+  echo "Usage: _team-run <create|event|heartbeat|finish|list|stale> ..." >&2
+  exit 2
+}
+
+[[ -n "$COMMAND" ]] || usage
+
+mkdir -p "$RUNS_DIR/events"
+
+record_path() { printf '%s/%s.json' "$RUNS_DIR" "$1"; }
+event_path() { printf '%s/events/%s.jsonl' "$RUNS_DIR" "$1"; }
+
+with_lock() {
+  local lock="$RUNS_DIR/.lock" waited=0
+  while ! mkdir "$lock" 2>/dev/null; do
+    sleep 0.05
+    waited=$((waited + 1))
+    (( waited < 600 )) || { echo "run store lock timeout" >&2; return 1; }
+  done
+  local status
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  rmdir "$lock"
+  return "$status"
+}
+
+sanitize() {
+  local value="$1"
+  value="${value:0:$MAX_EVENT_BYTES}"
+  printf '%s' "$value" | sed -E \
+    -e 's/(Bearer[[:space:]]+)[^[:space:]]+/\1[REDACTED]/Ig' \
+    -e 's/((api[_-]?key|token|secret|password|authorization)[[:space:]]*[:=][[:space:]]*)[^,[:space:]}]+/\1[REDACTED]/Ig'
+}
+
+write_record() {
+  local path="$1" tmp filter
+  shift
+  local -a jq_args=("$@")
+  filter="${jq_args[${#jq_args[@]}-1]}"
+  unset 'jq_args[${#jq_args[@]}-1]'
+  tmp="${path}.tmp.$$"
+  jq "${jq_args[@]}" "$filter" "$path" >"$tmp"
+  mv -f "$tmp" "$path"
+}
+
+create_record() {
+  local role="$3" bead_id="$4" project="$5" worker_id="$6" now path
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  path="$(record_path "$RUN_ID")"
+  [[ ! -e "$path" ]] || { echo "run already exists: $RUN_ID" >&2; return 1; }
+  jq -n \
+    --arg run_id "$RUN_ID" \
+    --arg worker_id "$worker_id" \
+    --arg role "$role" \
+    --arg bead_id "$bead_id" \
+    --arg project "$project" \
+    --arg pid "$$" \
+    --arg host "${HOSTNAME:-unknown}" \
+    --arg now "$now" \
+    --arg event_log "$(event_path "$RUN_ID")" \
+    '{run_id:$run_id, worker_id:$worker_id, role:$role, bead_id:$bead_id,
+      project:$project, pid:($pid|tonumber), host:$host, started_at:$now,
+      last_heartbeat_at:$now, lease_expires_at:null, finished_at:null,
+      state:"starting", exit_code:null, opencode_session_id:null,
+      event_log_path:$event_log, event_count:0}' >"$path"
+  printf '%s\n' "$(jq -c . "$path")"
+}
+
+update_heartbeat() {
+  local path now expires
+  path="$(record_path "$RUN_ID")"
+  [[ -f "$path" ]] || { echo "run record missing: $RUN_ID" >&2; return 1; }
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  expires="$(date -u -d "+${TEAM_LEASE_SECONDS:-90} seconds" +%Y-%m-%dT%H:%M:%SZ)"
+  write_record "$path" --arg now "$now" --arg expires "$expires" \
+    '.last_heartbeat_at=$now | .lease_expires_at=$expires | if .state=="starting" or .state=="claimed" then .state="running" else . end'
+}
+
+append_event() {
+  local kind="$1" message="$2" path now
+  path="$(record_path "$RUN_ID")"
+  [[ -f "$path" ]] || { echo "run record missing: $RUN_ID" >&2; return 1; }
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  message="$(sanitize "$message")"
+  jq -cn --arg at "$now" --arg kind "$kind" --arg message "$message" \
+    '{at:$at, kind:$kind, message:$message}' >>"$(event_path "$RUN_ID")"
+  write_record "$path" --arg now "$now" \
+    '.event_count=(.event_count+1) | .last_event_at=$now'
+}
+
+finish_record() {
+  local state="$3" exit_code="$4" path now
+  path="$(record_path "$RUN_ID")"
+  [[ -f "$path" ]] || { echo "run record missing: $RUN_ID" >&2; return 1; }
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_record "$path" --arg now "$now" --arg state "$state" --argjson code "$exit_code" \
+    '.finished_at=$now | .state=$state | .exit_code=$code | .lease_expires_at=null'
+}
+
+case "$COMMAND" in
+  create)
+    [[ $# -eq 6 ]] || { echo "Usage: _team-run create <run-id> <role> <bead-id> <project> <worker-id>" >&2; exit 2; }
+    with_lock create_record "$@"
+    ;;
+  heartbeat)
+    [[ $# -eq 2 ]] || usage
+    with_lock update_heartbeat
+    ;;
+  event)
+    [[ $# -ge 4 ]] || { echo "Usage: _team-run event <run-id> <kind> <message>" >&2; exit 2; }
+    shift 2
+    with_lock append_event "$@"
+    ;;
+  finish)
+    [[ $# -eq 4 ]] || { echo "Usage: _team-run finish <run-id> <state> <exit-code>" >&2; exit 2; }
+    with_lock finish_record "$@"
+    ;;
+  list)
+    jq -s '.' "$RUNS_DIR"/*.json 2>/dev/null || printf '[]\n'
+    ;;
+  stale)
+    now="$(date -u +%s)"
+    for path in "$RUNS_DIR"/*.json; do
+      [[ -f "$path" ]] || continue
+      jq -c --argjson now "$now" 'select(.lease_expires_at != null and (.lease_expires_at|fromdateiso8601) < $now and (.finished_at == null))' "$path"
+    done
+    ;;
+  *) usage ;;
+esac

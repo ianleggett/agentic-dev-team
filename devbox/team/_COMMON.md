@@ -19,8 +19,8 @@ Code semantic search first. Use ripgrep for exact symbol/string matches. Always
 inspect the actual source before editing. Git remains the source-code/history system.
 
 ## Worker labels
-`worker:spec`, `worker:architect`, `worker:tech-lead`, `worker:java`,
-`worker:frontend`, `worker:database`, `worker:devops`, `worker:qa`,
+`worker:spec`, `worker:architect`, `worker:tech-lead`, `worker:fullstack`,
+`worker:database`, `worker:devops`, `worker:qa`,
 `worker:review`, `worker:security`, `worker:docs`.
 
 ## Stages

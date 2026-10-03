@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROLE="${1:?role required}"
-WORKER_LABEL="${2:?worker label required}"
+WORKER_LABELS="${2:?worker label required}"
 TARGET="${3:-}"
+AUTO_CLAIM=false
 export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
 ROOT="${WORKSPACE_ROOT:-/workspace}"
 ROLE_FILE="/opt/agent-team/${ROLE}.md"
@@ -12,29 +13,22 @@ die(){ echo "ERROR: $*" >&2; exit 2; }
 [[ -f "$ROLE_FILE" ]] || die "Role file missing: $ROLE_FILE"
 command -v bd >/dev/null || die "bd not found"
 command -v opencode >/dev/null || die "opencode not found"
+command -v jq >/dev/null || die "jq not found"
 bd prime >/tmp/bd-prime.txt
 
 if [[ -z "$TARGET" ]]; then
-  CANDIDATES="$(bd ready --json | jq -r --arg w "$WORKER_LABEL" '
-    [.[] |
-      select(((.labels // []) | index($w)) != null) |
-      select([(.labels // [])[] | select(startswith("project:"))] | length == 1)
-    ] | sort_by(.priority // 2) | .[0:8][] | .id')"
-  if [[ -z "$CANDIDATES" ]]; then
-    echo "No ready ${WORKER_LABEL} bead with exactly one project:* label."
+  AUTO_CLAIM=true
+   CANDIDATES="$(bd ready --json | jq -r --arg workers "$WORKER_LABELS" '
+     ($workers | split(",")) as $w |
+     [.[] |
+       select(any(.labels[]?; . as $label | ($w | index($label)) != null)) |
+       select([(.labels // [])[] | select(startswith("project:"))] | length == 1)
+     ] | sort_by(.priority // 2) | .[0:8][] | .id')"
+   if [[ -z "$CANDIDATES" ]]; then
+     echo "No ready ${WORKER_LABELS} bead with exactly one project:* label."
     exit 0
   fi
-  for CANDIDATE in $CANDIDATES; do
-    if bd update "$CANDIDATE" --claim >/dev/null 2>&1; then
-      echo "Claimed bead $CANDIDATE for $ROLE"
-      TARGET="$CANDIDATE"
-      break
-    fi
-  done
-  if [[ -z "$TARGET" ]]; then
-    echo "No claimable ready ${WORKER_LABEL} bead: matching beads are already claimed (live or stale); skipping."
-    exit 0
-  fi
+  TARGET="${CANDIDATES%%$'\n'*}"
 fi
 
 ISSUE="$(bd show "$TARGET" --json)"
@@ -52,14 +46,62 @@ PROJECT_DIR="$ROOT/$PROJECT"
 ID="$TARGET"
 cd "$PROJECT_DIR"
 
+RUN_ID="${ROLE}-$(date -u +%Y%m%dT%H%M%S)-$$-${RANDOM}"
+WORKER_ID="${ROLE}@${HOSTNAME:-unknown}:$$"
+RUN_LABEL="run:${RUN_ID}"
+FINALIZED=false
+HEARTBEAT_PID=""
+
+finish_run() {
+  local status=$?
+  if [[ -n "$HEARTBEAT_PID" ]]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+  if [[ "$FINALIZED" != "true" ]]; then
+    /usr/local/libexec/_team-run finish "$RUN_ID" abandoned 125 >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap finish_run EXIT INT TERM
+
+/usr/local/libexec/_team-run create "$RUN_ID" "$ROLE" "$ID" "$PROJECT" "$WORKER_ID" >/dev/null
+
+if [[ "$AUTO_CLAIM" == "true" ]]; then
+  if ! bd update "$ID" --claim >/dev/null 2>&1; then
+    /usr/local/libexec/_team-run event "$RUN_ID" lifecycle "claim conflict" || true
+    /usr/local/libexec/_team-run finish "$RUN_ID" failed 75 >/dev/null 2>&1 || true
+    FINALIZED=true
+    echo "Could not claim bead $ID; another worker owns it or it is no longer ready."
+    exit 0
+  fi
+else
+  /usr/local/libexec/_team-run event "$RUN_ID" lifecycle "using explicit target; claim is managed by caller" || true
+fi
+
+bd update "$ID" --add-label "$RUN_LABEL" --json >/dev/null
+echo "Claimed bead $ID for $ROLE (run $RUN_ID)"
+/usr/local/libexec/_team-run event "$RUN_ID" lifecycle "claimed bead $ID" || true
+
+heartbeat_loop() {
+  while kill -0 "$$" 2>/dev/null; do
+    sleep "${TEAM_HEARTBEAT_SECONDS:-20}"
+    kill -0 "$$" 2>/dev/null || break
+    /usr/local/libexec/_team-run heartbeat "$RUN_ID" >/dev/null 2>&1 || true
+  done
+}
+heartbeat_loop &
+HEARTBEAT_PID=$!
+/usr/local/libexec/_team-run heartbeat "$RUN_ID" >/dev/null
+
 if command -v ccc >/dev/null 2>&1 && [[ -d .cocoindex_code || -d .cocoindex ]]; then
   echo "Refreshing CocoIndex Code index..."
   timeout 300 ccc index || echo "WARNING: CocoIndex index refresh failed; agent will rely on ripgrep/read." >&2
 fi
 
-echo "Worker=$ROLE Bead=$ID Project=$PROJECT Repo=$PROJECT_DIR Beads=$BEADS_DIR"
+echo "Worker=$ROLE Bead=$ID Project=$PROJECT Repo=$PROJECT_DIR Beads=$BEADS_DIR Run=$RUN_ID"
 
-exec opencode run "$(cat "$ROLE_FILE")
+PROMPT="$(cat "$ROLE_FILE")
 
 Shared Beads DB: $BEADS_DIR
 Project: $PROJECT_LABEL
@@ -75,3 +117,26 @@ $(cat /tmp/bd-prime.txt)
 $ID is already claimed by this run; do not re-claim or re-assign it. Work only in $PROJECT_DIR
 unless the bead explicitly requires otherwise. Do not create a local .beads directory. Leave
 a durable Beads handoff comment and stop after this bead."
+
+set +e
+opencode run --format json "$PROMPT" \
+  2> >(while IFS= read -r line; do
+    printf '%s\n' "$line" >&2
+    /usr/local/libexec/_team-run event "$RUN_ID" stderr "$line" || true
+  done) \
+  | while IFS= read -r line; do
+      printf '%s\n' "$line"
+      /usr/local/libexec/_team-run event "$RUN_ID" opencode "$line" || true
+    done
+OPENCODE_STATUS=${PIPESTATUS[0]}
+set -e
+
+if (( OPENCODE_STATUS == 0 )); then
+  /usr/local/libexec/_team-run event "$RUN_ID" lifecycle "OpenCode completed successfully" || true
+  /usr/local/libexec/_team-run finish "$RUN_ID" succeeded "$OPENCODE_STATUS" >/dev/null
+else
+  /usr/local/libexec/_team-run event "$RUN_ID" error "OpenCode exited with status $OPENCODE_STATUS" || true
+  /usr/local/libexec/_team-run finish "$RUN_ID" failed "$OPENCODE_STATUS" >/dev/null
+fi
+FINALIZED=true
+exit "$OPENCODE_STATUS"

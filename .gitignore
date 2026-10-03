@@ -34,6 +34,9 @@ workspace/*
 .beads/logs/
 .beads/tmp/
 
+# Team execution run records and redacted event streams
+.team-runs/
+
 # CocoIndex Code indexes/caches
 .cocoindex/
 .cocoindex_code/

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export BEADS_DIR="${BEADS_DIR:-/workspace/.beads}"
+export TEAM_RUNS_DIR="${TEAM_RUNS_DIR:-/workspace/.team-runs}"
 
 usage() {
   echo "Usage: team-autorun [--max <rounds>] [--watch] [--sleep <seconds>]" >&2
@@ -22,6 +23,35 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -d "$BEADS_DIR" ]] || { echo "Shared Beads DB missing: $BEADS_DIR (run team-init first)" >&2; exit 2; }
+command -v /usr/local/libexec/_team-run >/dev/null 2>&1 || { echo "team run runtime missing" >&2; exit 2; }
+
+RUN_ID="autorun-$(date -u +%Y%m%dT%H%M%S)-$$-${RANDOM}"
+/usr/local/libexec/_team-run create "$RUN_ID" dispatcher none workspace "team-autorun@${HOSTNAME:-unknown}:$$" >/dev/null
+FINALIZED=false
+HEARTBEAT_PID=""
+finish_dispatcher() {
+  local status=$?
+  if [[ -n "$HEARTBEAT_PID" ]]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
+  if [[ "$FINALIZED" != "true" ]]; then
+    /usr/local/libexec/_team-run finish "$RUN_ID" failed "$status" >/dev/null 2>&1 || true
+  fi
+  exit "$status"
+}
+trap finish_dispatcher EXIT INT TERM
+
+dispatcher_heartbeat() {
+  while kill -0 "$$" 2>/dev/null; do
+    sleep "${TEAM_HEARTBEAT_SECONDS:-20}"
+    kill -0 "$$" 2>/dev/null || break
+    /usr/local/libexec/_team-run heartbeat "$RUN_ID" >/dev/null 2>&1 || true
+  done
+}
+dispatcher_heartbeat &
+HEARTBEAT_PID=$!
+/usr/local/libexec/_team-run heartbeat "$RUN_ID" >/dev/null
 
 routable_count() {
   bd ready --json | jq -r '
@@ -35,11 +65,16 @@ routable_count() {
 run_round() {
   local worker
   for worker in spec-writer solution-architect tech-lead \
-                java-dev frontend-dev database-dev devops \
+                fullstack-dev database-dev devops \
                 qa-test code-reviewer security-reviewer docs-writer; do
     command -v "$worker" >/dev/null 2>&1 || continue
     echo "--- $(date '+%H:%M:%S') $worker ---"
-    "$worker" || true
+    /usr/local/libexec/_team-run event "$RUN_ID" worker "starting $worker" || true
+    set +e
+    "$worker"
+    local status=$?
+    set -e
+    /usr/local/libexec/_team-run event "$RUN_ID" worker "$worker exited with status $status" || true
   done
 }
 
@@ -64,3 +99,6 @@ while (( ROUND < MAX )); do
   echo "=== Round $ROUND/$MAX: $ROUTABLE routable ready bead(s) ==="
   run_round
 done
+
+/usr/local/libexec/_team-run finish "$RUN_ID" succeeded 0 >/dev/null
+FINALIZED=true
