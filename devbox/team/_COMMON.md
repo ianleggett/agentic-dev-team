@@ -29,3 +29,7 @@ inspect the actual source before editing. Git remains the source-code/history sy
 
 Before editing implementation work, claim the bead atomically. Before ending, leave a
 durable Beads comment. Never close a bead until its acceptance criteria are satisfied.
+
+For handoffs, run `bd comment` as a direct command. Avoid chaining it with output
+filters or cleanup commands so the Beads write receives a separate permission check
+and is not lost when a later shell operation is rejected.
