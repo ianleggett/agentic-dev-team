@@ -5,6 +5,7 @@
   "worker:fullstack": "fullstack-dev",
   "worker:database": "database-dev",
   "worker:devops": "devops",
+  "worker:ui-assessor": "ui-assessor",
   "worker:qa": "qa-test",
   "worker:review": "code-reviewer",
   "worker:security": "security-reviewer",

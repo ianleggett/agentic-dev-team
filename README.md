@@ -172,6 +172,9 @@ conversation is intentionally **not** the project memory.
 
   `devops`                `worker:devops`         Docker, CI/CD and
                                                   runtime infrastructure
+
+  `ui-assessor`           `worker:ui-assessor`    Playwright-based UI
+                                                  assessment and findings
   -----------------------------------------------------------------------
 
 ### Quality and hand-off
@@ -240,6 +243,7 @@ worker:spec
 worker:architect
 worker:tech-lead
 worker:fullstack
+worker:ui-assessor
 worker:database
 worker:devops
 worker:qa
@@ -280,6 +284,13 @@ explicitly.
 `fullstack-dev` is the single product implementation worker. During the
 transition it also consumes existing `worker:java` and `worker:frontend`
 beads; new work should use `worker:fullstack`.
+
+`ui-assessor` is an assessment-only worker. It reviews a project preview with
+Playwright and creates evidence-based `worker:fullstack` frontend beads; it
+does not modify application code. Run it explicitly against a live preview;
+it is not part of `team-autorun` because it requires a browser target and can
+otherwise repeat the same assessment. Playwright MCP must be configured in the
+OpenCode environment for browser evidence.
 
 ``` bash
 fullstack-dev bd-a1b2
@@ -884,6 +895,7 @@ solution-architect <spec>
 tech-lead <architecture-or-spec>
 
 fullstack-dev [bead]
+ui-assessor --project <project> <preview-url>
 database-dev [bead]
 devops [bead]
 

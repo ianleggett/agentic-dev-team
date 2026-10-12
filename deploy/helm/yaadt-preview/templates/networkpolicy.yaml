@@ -1,0 +1,35 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "yaadt-preview.fullname" . }}-default
+  labels:
+    {{- include "yaadt-preview.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+    {{- with .Values.networkPolicy.ingressNamespaceSelector }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+    {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.container.port }}
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if .Values.networkPolicy.allowExternalEgress }}
+    - {}
+    {{- end }}
+{{- end }}

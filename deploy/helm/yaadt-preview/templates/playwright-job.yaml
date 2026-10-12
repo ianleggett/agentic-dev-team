@@ -1,0 +1,47 @@
+{{- if .Values.playwright.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "yaadt-preview.fullname" . }}-playwright
+  labels:
+    {{- include "yaadt-preview.labels" . | nindent 4 }}
+    yaadt.dev/job: playwright
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.playwright.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.playwright.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "yaadt-preview.selectorLabels" . | nindent 8 }}
+        yaadt.dev/job: playwright
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.playwright.runAsUser }}
+        runAsGroup: {{ .Values.playwright.runAsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: playwright
+          image: {{ .Values.playwright.image | quote }}
+          imagePullPolicy: {{ .Values.playwright.imagePullPolicy }}
+          command:
+            {{- toYaml .Values.playwright.command | nindent 12 }}
+          args:
+            {{- toYaml .Values.playwright.args | nindent 12 }}
+          env:
+            - name: BASE_URL
+              value: {{ .Values.playwright.baseURL | quote }}
+            {{- with .Values.playwright.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.playwright.resources | nindent 12 }}
+{{- end }}

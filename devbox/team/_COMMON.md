@@ -20,7 +20,7 @@ inspect the actual source before editing. Git remains the source-code/history sy
 
 ## Worker labels
 `worker:spec`, `worker:architect`, `worker:tech-lead`, `worker:fullstack`,
-`worker:database`, `worker:devops`, `worker:qa`,
+`worker:database`, `worker:devops`, `worker:ui-assessor`, `worker:qa`,
 `worker:review`, `worker:security`, `worker:docs`.
 
 ## Stages
@@ -33,3 +33,7 @@ durable Beads comment. Never close a bead until its acceptance criteria are sati
 For handoffs, run `bd comment` as a direct command. Avoid chaining it with output
 filters or cleanup commands so the Beads write receives a separate permission check
 and is not lost when a later shell operation is rejected.
+
+Beads uses different commands for writing and reading comments: use
+`bd comment <issue-id> "text"` to add one, and `bd comments <issue-id> --json`
+to list them. `bd comment list` is invalid.

@@ -1,0 +1,107 @@
+replicaCount: 1
+
+image:
+  repository: registry.example.com/example-app
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+container:
+  port: 8080
+  portName: http
+  command: []
+  args: []
+  env: []
+  envFrom: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+probes:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 6
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts: []
+  tls: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+networkPolicy:
+  enabled: true
+  allowExternalEgress: false
+  ingressNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+
+resourceQuota:
+  enabled: true
+  hard:
+    pods: "10"
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+
+limitRange:
+  enabled: true
+  default:
+    cpu: 1
+    memory: 1Gi
+  defaultRequest:
+    cpu: 100m
+    memory: 256Mi
+
+playwright:
+  enabled: false
+  image: mcr.microsoft.com/playwright:v1.52.0-noble
+  imagePullPolicy: IfNotPresent
+  runAsUser: 1000
+  runAsGroup: 1000
+  baseURL: http://REPLACE_WITH_SERVICE
+  command: ["sh", "-c"]
+  args:
+    - npx playwright test
+  env: []
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 3600

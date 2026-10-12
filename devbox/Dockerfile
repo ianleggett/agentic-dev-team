@@ -217,6 +217,7 @@ COPY bin/spec-writer /usr/local/bin/spec-writer
 COPY bin/solution-architect /usr/local/bin/solution-architect
 COPY bin/tech-lead /usr/local/bin/tech-lead
 COPY bin/fullstack-dev /usr/local/bin/fullstack-dev
+COPY bin/ui-assessor /usr/local/bin/ui-assessor
 COPY bin/database-dev /usr/local/bin/database-dev
 COPY bin/devops /usr/local/bin/devops
 COPY bin/qa-test /usr/local/bin/qa-test
@@ -246,6 +247,7 @@ RUN chmod 0755 \
       /usr/local/bin/solution-architect \
       /usr/local/bin/tech-lead \
       /usr/local/bin/fullstack-dev \
+      /usr/local/bin/ui-assessor \
       /usr/local/bin/database-dev \
       /usr/local/bin/devops \
       /usr/local/bin/qa-test \
@@ -362,7 +364,9 @@ RUN chmod 0755 /usr/local/bin/devbox-entrypoint
 # unprivileged developer user using gosu.
 # -----------------------------------------------------------------------------
 
-USER developer
+USER root
+
+ENTRYPOINT ["/usr/local/bin/devbox-entrypoint"]
 
 WORKDIR /workspace
 
