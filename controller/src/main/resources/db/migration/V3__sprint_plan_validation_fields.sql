@@ -1,0 +1,3 @@
+ALTER TABLE sprint_steps
+    ADD COLUMN IF NOT EXISTS dependency_keys TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS resource_locks TEXT NOT NULL DEFAULT '';

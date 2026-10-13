@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: yaadt-controller
+  datasource:
+    url: ${YAADT_CONTROLLER_DB_URL:jdbc:postgresql://localhost:5432/yaadt_controller}
+    username: ${YAADT_CONTROLLER_DB_USERNAME:yaadt}
+    password: ${YAADT_CONTROLLER_DB_PASSWORD:yaadt}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+yaadt:
+  beads:
+    command: ${YAADT_BEADS_COMMAND:bd}
+    directory: ${YAADT_BEADS_DIRECTORY:/workspace}
+    beads-dir: ${BEADS_DIR:/workspace/.beads}
+    actor: ${BEADS_ACTOR:yaadt-controller}
+    timeout: ${YAADT_BEADS_TIMEOUT:30s}
+  temporal:
+    worker-enabled: ${YAADT_TEMPORAL_WORKER_ENABLED:false}
+    target: ${YAADT_TEMPORAL_TARGET:localhost:7233}
+    namespace: ${YAADT_TEMPORAL_NAMESPACE:default}
+    task-queue: ${YAADT_TEMPORAL_TASK_QUEUE:yaadt}

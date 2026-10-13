@@ -1,5 +1,116 @@
 services:
 
+  postgres-controller:
+    image: postgres:17-alpine
+    container_name: yaadt-postgres-controller
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${YAADT_CONTROLLER_DB_USERNAME:-yaadt}
+      POSTGRES_PASSWORD: ${YAADT_CONTROLLER_DB_PASSWORD:-yaadt}
+      POSTGRES_DB: ${YAADT_CONTROLLER_DB_NAME:-yaadt_controller}
+    volumes:
+      - yaadt-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - beads-net
+
+  postgres-temporal:
+    image: postgres:17-alpine
+    container_name: yaadt-postgres-temporal
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${YAADT_TEMPORAL_DB_USERNAME:-temporal}
+      POSTGRES_PASSWORD: ${YAADT_TEMPORAL_DB_PASSWORD:-temporal}
+      POSTGRES_DB: ${YAADT_TEMPORAL_DB_NAME:-temporal}
+    volumes:
+      - yaadt-temporal-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - beads-net
+
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    container_name: yaadt-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres-temporal:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${YAADT_TEMPORAL_DB_USERNAME:-temporal}
+      POSTGRES_PWD: ${YAADT_TEMPORAL_DB_PASSWORD:-temporal}
+      POSTGRES_SEEDS: postgres-temporal
+      DEFAULT_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
+      DEFAULT_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
+      TEMPORAL_ADDRESS: temporal:7233
+    networks:
+      - beads-net
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: yaadt-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_UI_PORT: 8233
+    ports:
+      - "8233:8233"
+    networks:
+      - beads-net
+
+  controller-api:
+    build:
+      context: ./controller
+    container_name: yaadt-controller-api
+    restart: unless-stopped
+    depends_on:
+      postgres-controller:
+        condition: service_healthy
+    environment:
+      YAADT_CONTROLLER_DB_URL: jdbc:postgresql://postgres-controller:5432/${YAADT_CONTROLLER_DB_NAME:-yaadt_controller}
+      YAADT_CONTROLLER_DB_USERNAME: ${YAADT_CONTROLLER_DB_USERNAME:-yaadt}
+      YAADT_CONTROLLER_DB_PASSWORD: ${YAADT_CONTROLLER_DB_PASSWORD:-yaadt}
+      YAADT_TEMPORAL_WORKER_ENABLED: "false"
+      YAADT_TEMPORAL_TARGET: temporal:7233
+      YAADT_TEMPORAL_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
+      YAADT_TEMPORAL_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
+    ports:
+      - "8080:8080"
+    networks:
+      - beads-net
+
+  controller-worker:
+    build:
+      context: ./controller
+    container_name: yaadt-controller-worker
+    restart: unless-stopped
+    depends_on:
+      postgres-controller:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    environment:
+      YAADT_CONTROLLER_DB_URL: jdbc:postgresql://postgres-controller:5432/${YAADT_CONTROLLER_DB_NAME:-yaadt_controller}
+      YAADT_CONTROLLER_DB_USERNAME: ${YAADT_CONTROLLER_DB_USERNAME:-yaadt}
+      YAADT_CONTROLLER_DB_PASSWORD: ${YAADT_CONTROLLER_DB_PASSWORD:-yaadt}
+      YAADT_TEMPORAL_WORKER_ENABLED: "true"
+      YAADT_TEMPORAL_TARGET: temporal:7233
+      YAADT_TEMPORAL_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
+      YAADT_TEMPORAL_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
+    networks:
+      - beads-net
+
   workspace-init:
     image: alpine:3.22
     container_name: beads-workspace-init
@@ -166,6 +277,8 @@ services:
 volumes:
   dev-home:
   beads-web-home:
+  yaadt-postgres-data:
+  yaadt-temporal-data:
 
 
 networks:
