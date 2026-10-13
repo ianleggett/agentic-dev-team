@@ -86,7 +86,7 @@ services:
       YAADT_TEMPORAL_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
       YAADT_TEMPORAL_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
     ports:
-      - "8080:8080"
+      - "${YAADT_CONTROLLER_API_PORT:-8080}:8080"
     networks:
       - beads-net
 
