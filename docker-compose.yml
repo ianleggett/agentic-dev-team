@@ -247,33 +247,6 @@ services:
     networks:
       - beads-net
 
-  team-runs-ui:
-    build:
-      context: ./devbox
-      args:
-        USER_UID: ${USER_UID:-1000}
-        USER_GID: ${USER_GID:-1000}
-        NPM_AUDIT_LEVEL: ${NPM_AUDIT_LEVEL:-high}
-
-    container_name: team-runs-ui
-    user: "${USER_UID:-1000}:${USER_GID:-1000}"
-    restart: unless-stopped
-    working_dir: /workspace
-    environment:
-      HOME: /home/developer
-      TEAM_RUNS_DIR: /workspace/.team-runs
-      TEAM_RUNS_HOST: 0.0.0.0
-      TEAM_RUNS_PORT: 3008
-      TEAM_WEB_MAX_LOG_BYTES: ${TEAM_WEB_MAX_LOG_BYTES:-200000}
-    ports:
-      - "3008:3008"
-    volumes:
-      - ./workspace:/workspace:ro
-    command: ["team-runs-web"]
-    networks:
-      - beads-net
-
-
 volumes:
   dev-home:
   beads-web-home:

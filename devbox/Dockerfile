@@ -232,7 +232,6 @@ COPY bin/team-autorun /usr/local/bin/team-autorun
 COPY bin/team-run-list /usr/local/bin/team-run-list
 COPY bin/team-requeue-stale /usr/local/bin/team-requeue-stale
 COPY bin/_team-run /usr/local/libexec/_team-run
-COPY bin/team-runs-web /usr/local/bin/team-runs-web
 COPY bin/beads-handoff /usr/local/bin/beads-handoff
 COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
 COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
@@ -261,7 +260,6 @@ RUN chmod 0755 \
       /usr/local/bin/team-run-list \
       /usr/local/bin/team-requeue-stale \
       /usr/local/libexec/_team-run \
-      /usr/local/bin/team-runs-web \
       /usr/local/bin/beads-handoff \
       /usr/local/bin/project-add \
       /usr/local/bin/project-list \
