@@ -19,7 +19,7 @@ public class TemporalWorkerConfiguration {
     WorkflowServiceStubs workflowServiceStubs(TemporalProperties properties) {
         return WorkflowServiceStubs.newServiceStubs(WorkflowServiceStubsOptions.newBuilder().setTarget(properties.target()).build());
     }
-    @Bean(destroyMethod = "shutdown")
+    @Bean(destroyMethod = "")
     WorkflowClient workflowClient(WorkflowServiceStubs service, TemporalProperties properties) {
         return WorkflowClient.newInstance(service, WorkflowClientOptions.newBuilder().setNamespace(properties.namespace()).build());
     }
