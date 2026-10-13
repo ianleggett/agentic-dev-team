@@ -1,6 +1,8 @@
 package dev.yaadt.controller.repository;
 
 import jakarta.validation.Valid;
+import dev.yaadt.controller.executor.GitCheckoutExecutor;
+import dev.yaadt.controller.executor.GitCheckoutRequest;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -19,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class RepositoryController {
 
     private final RepositoryService service;
+    private final GitCheckoutExecutor checkoutExecutor;
 
-    public RepositoryController(RepositoryService service) {
+    public RepositoryController(RepositoryService service, GitCheckoutExecutor checkoutExecutor) {
         this.service = service;
+        this.checkoutExecutor = checkoutExecutor;
     }
 
     @GetMapping
@@ -40,6 +44,18 @@ public class RepositoryController {
         RepositoryResponse response = service.create(projectId, request);
         return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/repositories/" + response.id()))
                 .body(response);
+    }
+
+    @PostMapping("/{id}/checkout")
+    public RepositoryCheckoutResponse checkout(@PathVariable UUID projectId, @PathVariable UUID id) {
+        Repository repository = service.entity(id);
+        if (!repository.getProjectId().equals(projectId)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Repository not found");
+        }
+        return RepositoryCheckoutResponse.from(checkoutExecutor.checkout(new GitCheckoutRequest(
+                repository.getId(), repository.getRemoteUrl(), repository.getDefaultBranch(),
+                repository.getRelativeWorkspacePath())));
     }
 
     @PutMapping("/{id}")

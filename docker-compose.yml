@@ -85,6 +85,10 @@ services:
       YAADT_TEMPORAL_TARGET: temporal:7233
       YAADT_TEMPORAL_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
       YAADT_TEMPORAL_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
+      YAADT_SSH_DIRECTORY: /run/yaadt/ssh
+      GIT_SSH_COMMAND: "ssh -o IdentityFile=/run/yaadt/ssh/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=/run/yaadt/ssh/known_hosts -o StrictHostKeyChecking=yes"
+    volumes:
+      - ${YAADT_SSH_DIRECTORY:-./.secrets/ssh}:/run/yaadt/ssh:ro
     ports:
       - "${YAADT_CONTROLLER_API_PORT:-8080}:8080"
     networks:
@@ -108,6 +112,22 @@ services:
       YAADT_TEMPORAL_TARGET: temporal:7233
       YAADT_TEMPORAL_NAMESPACE: ${YAADT_TEMPORAL_NAMESPACE:-default}
       YAADT_TEMPORAL_TASK_QUEUE: ${YAADT_TEMPORAL_TASK_QUEUE:-yaadt}
+      YAADT_SSH_DIRECTORY: /run/yaadt/ssh
+      GIT_SSH_COMMAND: "ssh -o IdentityFile=/run/yaadt/ssh/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=/run/yaadt/ssh/known_hosts -o StrictHostKeyChecking=yes"
+    volumes:
+      - ${YAADT_SSH_DIRECTORY:-./.secrets/ssh}:/run/yaadt/ssh:ro
+    networks:
+      - beads-net
+
+  controller-dashboard:
+    build:
+      context: ./controller-dashboard
+    container_name: yaadt-controller-dashboard
+    restart: unless-stopped
+    depends_on:
+      - controller-api
+    ports:
+      - "${YAADT_CONTROLLER_DASHBOARD_PORT:-8090}:80"
     networks:
       - beads-net
 
@@ -189,6 +209,7 @@ services:
 
     volumes:
       - ./workspace:/workspace
+      - ${YAADT_SSH_DIRECTORY:-./.secrets/ssh}:/run/yaadt/ssh:ro
       - ${SSH_GITEA_KEY:-${HOME}/.ssh/gitea}:/home/developer/.ssh/gitea:ro
 
     tty: true

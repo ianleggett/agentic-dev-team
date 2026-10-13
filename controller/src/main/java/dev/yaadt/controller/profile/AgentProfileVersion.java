@@ -29,8 +29,17 @@ public class AgentProfileVersion {
     @Column(name = "provider_identifier", nullable = false, length = 120)
     private String providerIdentifier;
 
+    @Column(name = "base_url", nullable = false, length = 500)
+    private String baseUrl;
+
+    @Column(name = "api_key", columnDefinition = "text")
+    private String apiKey;
+
     @Column(name = "prompt_reference", nullable = false, length = 240)
     private String promptReference;
+
+    @Column(name = "team_prompt", nullable = false, columnDefinition = "text")
+    private String teamPrompt;
 
     @Column(name = "tool_policy", nullable = false, columnDefinition = "text")
     private String toolPolicy;
@@ -62,7 +71,10 @@ public class AgentProfileVersion {
         this.version = version;
         this.modelIdentifier = request.modelIdentifier();
         this.providerIdentifier = request.providerIdentifier();
+        this.baseUrl = request.baseUrl();
+        this.apiKey = request.apiKey();
         this.promptReference = request.promptReference();
+        this.teamPrompt = request.teamPrompt();
         this.toolPolicy = request.toolPolicy();
         this.permissionPolicy = request.permissionPolicy();
         this.environmentPolicy = request.environmentPolicy();
@@ -77,7 +89,11 @@ public class AgentProfileVersion {
     public int getVersion() { return version; }
     public String getModelIdentifier() { return modelIdentifier; }
     public String getProviderIdentifier() { return providerIdentifier; }
+    public String getBaseUrl() { return baseUrl; }
+    public boolean isApiKeyConfigured() { return apiKey != null && !apiKey.isBlank(); }
+    String getApiKey() { return apiKey; }
     public String getPromptReference() { return promptReference; }
+    public String getTeamPrompt() { return teamPrompt; }
     public String getToolPolicy() { return toolPolicy; }
     public String getPermissionPolicy() { return permissionPolicy; }
     public String getEnvironmentPolicy() { return environmentPolicy; }

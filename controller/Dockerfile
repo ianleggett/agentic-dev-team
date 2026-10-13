@@ -8,6 +8,11 @@ RUN mvn -q -DskipTests package
 
 FROM eclipse-temurin:17-jre
 
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build /build/target/yaadt-controller-0.1.0-SNAPSHOT.jar app.jar
 

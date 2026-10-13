@@ -1,0 +1,5 @@
+ALTER TABLE project_managers ADD CONSTRAINT project_managers_state_ck CHECK (state IN (
+    'DISABLED', 'ENABLED', 'WAITING_FOR_LEASE', 'PLANNING', 'WAITING_FOR_APPROVAL',
+    'WAITING_FOR_SPRINT', 'REPLANNING', 'WAITING_FOR_EVENT', 'FAILED'
+));
+UPDATE project_managers SET state = 'ENABLED' WHERE state = 'DISABLED';

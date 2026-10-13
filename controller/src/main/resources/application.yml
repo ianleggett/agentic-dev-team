@@ -18,6 +18,9 @@ management:
       exposure:
         include: health,info
 yaadt:
+  executor:
+    workspace-root: ${YAADT_EXECUTOR_WORKSPACE_ROOT:/workspace}
+    git-timeout: ${YAADT_EXECUTOR_GIT_TIMEOUT:10m}
   beads:
     command: ${YAADT_BEADS_COMMAND:bd}
     directory: ${YAADT_BEADS_DIRECTORY:/workspace}

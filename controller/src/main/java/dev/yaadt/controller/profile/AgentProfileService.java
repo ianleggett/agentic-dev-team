@@ -36,10 +36,24 @@ public class AgentProfileService {
         return AgentProfileResponse.from(profile, version);
     }
 
+    @Transactional(readOnly = true)
+    public AgentProfileResponse get(UUID id) {
+        AgentProfile profile = profiles.findById(id).orElseThrow(() -> notFound("Agent profile not found"));
+        return AgentProfileResponse.from(profile, versions.findTopByProfileIdOrderByVersionDesc(id).orElseThrow());
+    }
+
     public AgentProfileResponse addVersion(UUID profileId, AgentProfileRequest request, String subject, String displayName) {
         AgentProfile profile = profiles.findById(profileId).orElseThrow(() -> notFound("Agent profile not found"));
-        int next = versions.findTopByProfileIdOrderByVersionDesc(profileId).map(v -> v.getVersion() + 1).orElse(1);
-        AgentProfileVersion version = versions.save(new AgentProfileVersion(profile.getId(), next, request,
+        AgentProfileVersion previous = versions.findTopByProfileIdOrderByVersionDesc(profileId).orElse(null);
+        int next = previous == null ? 1 : previous.getVersion() + 1;
+        AgentProfileRequest effectiveRequest = request;
+        if (previous != null && (request.apiKey() == null || request.apiKey().isBlank())) {
+            effectiveRequest = new AgentProfileRequest(request.name(), request.role(), request.modelIdentifier(),
+                    request.providerIdentifier(), request.baseUrl(), previous.getApiKey(), request.promptReference(),
+                    request.teamPrompt(), request.toolPolicy(), request.permissionPolicy(), request.environmentPolicy(),
+                    request.maxSteps(), request.timeoutSeconds());
+        }
+        AgentProfileVersion version = versions.save(new AgentProfileVersion(profile.getId(), next, effectiveRequest,
                 users.resolve(subject, displayName).getId(), Instant.now(clock)));
         return AgentProfileResponse.from(profile, version);
     }

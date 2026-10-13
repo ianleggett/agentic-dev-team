@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YAADT Control Room</title>
+  <link rel="stylesheet" href="styles.css?v=3">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">Y</span><div><strong>YAADT</strong><small>control room</small></div></div>
+      <nav><button class="nav active" data-view="overview">Overview <span>01</span></button><button class="nav" data-view="projects">Projects <span>02</span></button><button class="nav" data-view="sprints">Sprints <span>03</span></button><button class="nav" data-view="agents">Agents <span>04</span></button><button class="nav" data-view="directives">Directives <span>05</span></button></nav>
+      <div class="side-note"><span class="live-dot"></span><div><b>Controller online</b><small>Temporal worker connected</small></div></div>
+    </aside>
+    <main>
+      <header class="topbar"><div><span class="eyebrow">OPERATIONS / LOCAL</span><h1 id="page-title">Control room</h1></div><div class="top-actions"><span class="connection"><i></i> API connected</span><button class="icon-button" id="refresh">↻</button></div></header>
+      <section id="app" class="content"><div class="loading">Loading controller state<span>...</span></div></section>
+    </main>
+  </div>
+  <script src="app.js?v=3"></script>
+</body>
+</html>

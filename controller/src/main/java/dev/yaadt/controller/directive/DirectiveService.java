@@ -4,6 +4,7 @@ import dev.yaadt.controller.user.CurrentUserService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,5 +21,9 @@ public class DirectiveService {
         int next = directives.findTopByProjectIdOrderByVersionDesc(projectId).map(d -> d.getVersion() + 1).orElse(1);
         return DirectiveResponse.from(directives.save(new DirectiveRevision(projectId, next, request.content(),
                 users.resolve(subject, name).getId(), Instant.now(clock))));
+    }
+    @Transactional(readOnly = true)
+    public List<DirectiveResponse> list(UUID projectId) {
+        return directives.findByProjectIdOrderByVersionDesc(projectId).stream().map(DirectiveResponse::from).toList();
     }
 }

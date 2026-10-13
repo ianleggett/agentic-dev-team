@@ -21,10 +21,10 @@ public class ProjectManager {
     protected ProjectManager() { }
     public ProjectManager(UUID projectId, UUID profileVersionId, Instant updatedAt) {
         this.projectId = projectId; this.agentProfileVersionId = profileVersionId;
-        this.state = "DISABLED"; this.updatedAt = updatedAt;
+         this.state = "ENABLED"; this.updatedAt = updatedAt;
     }
     public void assign(UUID profileVersionId, Instant updatedAt) {
-        this.agentProfileVersionId = profileVersionId; this.updatedAt = updatedAt;
+        this.agentProfileVersionId = profileVersionId; this.state = "ENABLED"; this.updatedAt = updatedAt;
     }
     public UUID getId() { return id; }
     public UUID getProjectId() { return projectId; }

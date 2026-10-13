@@ -5,6 +5,12 @@
 !.env.sample
 *.env
 secrets/
+.secrets/
+!.secrets/
+!.secrets/ssh/
+.secrets/ssh/*
+!.secrets/ssh/README.md
+!.secrets/ssh/.gitkeep
 *.pem
 *.key
 *.p12

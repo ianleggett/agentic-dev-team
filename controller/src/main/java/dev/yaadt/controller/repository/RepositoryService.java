@@ -31,6 +31,10 @@ public class RepositoryService {
         return RepositoryResponse.from(find(id));
     }
 
+    public Repository entity(UUID id) {
+        return find(id);
+    }
+
     public RepositoryResponse create(UUID projectId, RepositoryRequest request) {
         Instant now = Instant.now(clock);
         return RepositoryResponse.from(repositories.save(new Repository(

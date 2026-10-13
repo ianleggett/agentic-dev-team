@@ -23,6 +23,9 @@ public class AgentProfileController {
     @GetMapping
     public List<AgentProfileResponse> list() { return service.list(); }
 
+    @GetMapping("/{id}")
+    public AgentProfileResponse get(@PathVariable UUID id) { return service.get(id); }
+
     @PostMapping
     public ResponseEntity<AgentProfileResponse> create(@Valid @RequestBody AgentProfileRequest request,
             @RequestHeader(value = "X-User-Subject", defaultValue = "local-user") String subject,
