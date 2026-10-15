@@ -23,4 +23,13 @@ public class SprintPlanController {
         SprintResponse response = service.create(projectId, request, subject, displayName);
         return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/sprints/" + response.id())).body(response);
     }
+
+    @PostMapping("/manual")
+    public ResponseEntity<SprintResponse> createManual(@PathVariable UUID projectId,
+            @Valid @RequestBody ManualSprintRequest request,
+            @RequestHeader(value = "X-User-Subject", defaultValue = "local-user") String subject,
+            @RequestHeader(value = "X-User-Name", defaultValue = "Local User") String displayName) {
+        SprintResponse response = service.createManual(projectId, request, subject, displayName);
+        return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/sprints/" + response.id())).body(response);
+    }
 }

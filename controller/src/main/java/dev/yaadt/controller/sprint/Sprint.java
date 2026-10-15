@@ -33,4 +33,10 @@ public class Sprint {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void transition(String next, Instant now) { this.state = next; this.updatedAt = now; }
+    public void replan(int version, String nextObjective, Instant now) {
+        this.currentPlanVersion = version;
+        this.objective = nextObjective;
+        this.state = "DRAFT";
+        this.updatedAt = now;
+    }
 }

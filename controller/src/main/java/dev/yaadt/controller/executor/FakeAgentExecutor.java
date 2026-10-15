@@ -6,7 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 
+@Component
+@ConditionalOnProperty(prefix = "yaadt.agent", name = "executor", havingValue = "fake", matchIfMissing = true)
 public class FakeAgentExecutor implements AgentExecutor {
     private final Map<String, AgentRunResult> completed = new ConcurrentHashMap<>();
     private final AtomicInteger invocations = new AtomicInteger();

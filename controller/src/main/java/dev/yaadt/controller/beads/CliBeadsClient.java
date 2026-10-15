@@ -114,12 +114,18 @@ public class CliBeadsClient implements BeadsClient {
     private BeadsIssue parseIssue(JsonNode node) {
         List<String> labels = new ArrayList<>();
         node.path("labels").forEach(label -> labels.add(label.asText()));
+        List<String> dependencyIds = new ArrayList<>();
+        node.path("dependencies").forEach(dependency -> {
+            String id = dependency.path("depends_on_id").asText();
+            if (!id.isBlank()) dependencyIds.add(id);
+        });
         return new BeadsIssue(
                 node.path("id").asText(),
                 node.path("title").asText(),
                 node.path("description").asText(null),
                 node.path("status").asText(),
-                List.copyOf(labels));
+                List.copyOf(labels),
+                List.copyOf(dependencyIds));
     }
 
     private JsonNode first(JsonNode root) {

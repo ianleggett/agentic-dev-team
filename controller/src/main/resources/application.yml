@@ -18,6 +18,10 @@ management:
       exposure:
         include: health,info
 yaadt:
+  agent:
+    executor: ${YAADT_AGENT_EXECUTOR:fake}
+    runner-url: ${YAADT_AGENT_RUNNER_URL:http://agent-runner:3010}
+    runner-token: ${YAADT_AGENT_RUNNER_TOKEN:}
   executor:
     workspace-root: ${YAADT_EXECUTOR_WORKSPACE_ROOT:/workspace}
     git-timeout: ${YAADT_EXECUTOR_GIT_TIMEOUT:10m}

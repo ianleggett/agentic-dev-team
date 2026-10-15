@@ -20,7 +20,19 @@ public class AuditEvent {
     @Column(name = "created_at", nullable = false) private Instant createdAt;
     protected AuditEvent() { }
     public AuditEvent(String actorId, UUID sprintId, String eventType, String fromState, String toState, String payload, Instant createdAt) {
-        this.actorType = "USER"; this.actorId = actorId; this.sprintId = sprintId; this.eventType = eventType;
+        this("USER", actorId, sprintId, eventType, fromState, toState, payload, createdAt);
+    }
+    public AuditEvent(String actorType, String actorId, UUID sprintId, String eventType, String fromState, String toState, String payload, Instant createdAt) {
+        this.actorType = actorType; this.actorId = actorId; this.sprintId = sprintId; this.eventType = eventType;
         this.fromState = fromState; this.toState = toState; this.payload = payload; this.createdAt = createdAt;
     }
+    public UUID getId() { return id; }
+    public String getActorType() { return actorType; }
+    public String getActorId() { return actorId; }
+    public UUID getSprintId() { return sprintId; }
+    public String getEventType() { return eventType; }
+    public String getFromState() { return fromState; }
+    public String getToState() { return toState; }
+    public String getPayload() { return payload; }
+    public Instant getCreatedAt() { return createdAt; }
 }

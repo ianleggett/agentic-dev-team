@@ -3,6 +3,7 @@ package dev.yaadt.controller.repository;
 import jakarta.validation.Valid;
 import dev.yaadt.controller.executor.GitCheckoutExecutor;
 import dev.yaadt.controller.executor.GitCheckoutRequest;
+import dev.yaadt.controller.executor.RunnerAdminClient;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -22,10 +23,12 @@ public class RepositoryController {
 
     private final RepositoryService service;
     private final GitCheckoutExecutor checkoutExecutor;
+    private final RunnerAdminClient runner;
 
-    public RepositoryController(RepositoryService service, GitCheckoutExecutor checkoutExecutor) {
+    public RepositoryController(RepositoryService service, GitCheckoutExecutor checkoutExecutor, RunnerAdminClient runner) {
         this.service = service;
         this.checkoutExecutor = checkoutExecutor;
+        this.runner = runner;
     }
 
     @GetMapping
@@ -55,7 +58,17 @@ public class RepositoryController {
         }
         return RepositoryCheckoutResponse.from(checkoutExecutor.checkout(new GitCheckoutRequest(
                 repository.getId(), repository.getRemoteUrl(), repository.getDefaultBranch(),
-                repository.getRelativeWorkspacePath())));
+                repository.effectiveWorkspacePath())));
+    }
+
+    @PostMapping("/{id}/cocoindex/reindex")
+    public java.util.Map<String, Object> reindex(@PathVariable UUID projectId, @PathVariable UUID id) {
+        Repository repository = service.entity(id);
+        if (!repository.getProjectId().equals(projectId)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Repository not found");
+        }
+        return runner.reindexCocoIndex("/workspace/" + repository.effectiveWorkspacePath());
     }
 
     @PutMapping("/{id}")

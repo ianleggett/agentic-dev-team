@@ -10,7 +10,9 @@ FROM eclipse-temurin:17-jre
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git openssh-client \
+    && apt-get install -y --no-install-recommends curl git openssh-client \
+    && curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash \
+    && command -v bd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

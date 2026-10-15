@@ -45,7 +45,8 @@ class CliBeadsClientTest {
                                 node.path("status").asText(),
                                 java.util.stream.StreamSupport.stream(node.path("labels").spliterator(), false)
                                         .map(com.fasterxml.jackson.databind.JsonNode::asText)
-                                        .toList()))
+                                        .toList(),
+                                List.of()))
                         .filter(issue -> issue.labels().contains(projectLabel))
                         .toList();
             } catch (Exception e) {

@@ -57,8 +57,7 @@ public class GitCheckoutExecutor {
 
     private Path resolveDestination(String relativePath) {
         Path relative = Path.of(relativePath);
-        if (relative.isAbsolute() || relative.getNameCount() == 0
-                || relative.iterator().next().toString().equals(".")) {
+        if (relative.isAbsolute() || relative.getNameCount() == 0) {
             throw new IllegalArgumentException("relativeWorkspacePath must be a non-empty relative path");
         }
         for (Path part : relative) {

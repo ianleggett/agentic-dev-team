@@ -44,7 +44,7 @@ public class AgentProfileSeeder implements CommandLineRunner {
             if (profiles.findByRole(team.role()).isPresent()) continue;
             AgentProfile profile = profiles.save(new AgentProfile(team.name(), team.role()));
             AgentProfileRequest request = new AgentProfileRequest(team.name(), team.role(), "external/qwen-coder",
-                    "openai-compatible", "http://host.docker.internal:8000/v1", null, "team/" + team.file(),
+                    "openai-compatible", "http://gx10-c16d.internal:8888/v1", null, "team/" + team.file(),
                     readPrompt(team.file()), "read,write,test", "workspace-only", "no-docker-credentials", 100, 1800);
             versions.save(new AgentProfileVersion(profile.getId(), 1, request, system.getId(), Instant.now(clock)));
         }

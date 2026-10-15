@@ -91,7 +91,7 @@ public class AgentProfileVersion {
     public String getProviderIdentifier() { return providerIdentifier; }
     public String getBaseUrl() { return baseUrl; }
     public boolean isApiKeyConfigured() { return apiKey != null && !apiKey.isBlank(); }
-    String getApiKey() { return apiKey; }
+    public String getApiKey() { return apiKey; }
     public String getPromptReference() { return promptReference; }
     public String getTeamPrompt() { return teamPrompt; }
     public String getToolPolicy() { return toolPolicy; }

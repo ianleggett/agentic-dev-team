@@ -234,6 +234,7 @@ COPY bin/team-requeue-stale /usr/local/bin/team-requeue-stale
 COPY bin/_team-run /usr/local/libexec/_team-run
 COPY bin/beads-handoff /usr/local/bin/beads-handoff
 COPY bin/configure-cocoindex-opencode /usr/local/bin/configure-cocoindex-opencode
+COPY bin/yaadt-agent-runner.js /usr/local/bin/yaadt-agent-runner.js
 COPY bin/cocoindex-project-init /usr/local/bin/cocoindex-project-init
 
 COPY bin/project-add /usr/local/bin/project-add
@@ -264,6 +265,7 @@ RUN chmod 0755 \
       /usr/local/bin/project-add \
       /usr/local/bin/project-list \
       /usr/local/bin/configure-cocoindex-opencode \
+      /usr/local/bin/yaadt-agent-runner.js \
       /usr/local/bin/cocoindex-project-init && \
     chmod 0644 \
       /opt/agent-team/*.md \

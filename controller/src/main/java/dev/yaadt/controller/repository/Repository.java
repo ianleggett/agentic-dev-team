@@ -109,6 +109,15 @@ public class Repository {
         return relativeWorkspacePath;
     }
 
+    /** Resolve the dashboard's root shortcut without colliding with shared workspace state. */
+    public String effectiveWorkspacePath() {
+        if (!".".equals(relativeWorkspacePath)) {
+            return relativeWorkspacePath;
+        }
+        String fallback = name == null ? "" : name.trim().replaceAll("[^A-Za-z0-9._-]+", "-");
+        return fallback.isBlank() ? "repository-" + id : fallback;
+    }
+
     public String getBuildCommands() {
         return buildCommands;
     }

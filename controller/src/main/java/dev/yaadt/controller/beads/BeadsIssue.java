@@ -7,5 +7,6 @@ public record BeadsIssue(
         String title,
         String description,
         String status,
-        List<String> labels) {
+        List<String> labels,
+        List<String> dependencyIds) {
 }
