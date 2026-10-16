@@ -45,7 +45,7 @@ public class OpenCodeAgentExecutor implements AgentExecutor {
             }
             String body = mapper.writeValueAsString(values);
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(runnerUrl + "/run"))
-                    .timeout(Duration.ofMinutes(31)).header("Authorization", "Bearer " + token)
+                    .timeout(Duration.ofMinutes(20)).header("Authorization", "Bearer " + token)
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {

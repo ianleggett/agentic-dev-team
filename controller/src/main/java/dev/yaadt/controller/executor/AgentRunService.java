@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Arrays;
@@ -129,6 +130,8 @@ public class AgentRunService {
         leases.acquire("execution:global", sprintOwner);
         try {
             List<dev.yaadt.controller.sprint.SprintStep> pending = new ArrayList<>(steps.findByPlanVersionIdOrderByStepKey(plan.getId()));
+            Set<String> sprintBeadIds = new LinkedHashSet<>();
+            pending.forEach(step -> sprintBeadIds.addAll(beadIds(step)));
             List<String> completedKeys = new ArrayList<>();
             while (!pending.isEmpty()) {
                 var step = pending.stream().filter(candidate -> dependenciesComplete(candidate, completedKeys)).findFirst().orElseThrow(() ->
@@ -154,6 +157,7 @@ public class AgentRunService {
                     for (int index = lockKeys.size() - 1; index >= 0; index--) leases.release("resource:" + lockKeys.get(index), owner);
                 }
             }
+            completeBeads(sprintId, sprintBeadIds);
             sprints.findById(sprintId).ifPresent(sprint -> sprint.transition("COMPLETED", Instant.now(clock)));
             event(sprintId, "execution-completed", "COMPLETED", "steps=" + completed);
             return "EXECUTED_STEPS=" + completed;
@@ -176,6 +180,23 @@ public class AgentRunService {
         String locks = step.getResourceLocks();
         if (locks == null || locks.isBlank()) return List.of();
         return Arrays.stream(locks.split(",")).map(String::trim).filter(value -> !value.isBlank()).sorted().toList();
+    }
+
+    private List<String> beadIds(dev.yaadt.controller.sprint.SprintStep step) {
+        if (step.getBeadIds() == null || step.getBeadIds().isBlank()) return List.of();
+        return Arrays.stream(step.getBeadIds().split(",")).map(String::trim).filter(value -> !value.isBlank()).toList();
+    }
+
+    private void completeBeads(UUID sprintId, Set<String> beadIds) {
+        for (String beadId : beadIds) {
+            BeadsIssue issue = beads.getIssue(beadId);
+            if (Set.of("closed", "completed", "cancelled", "canceled", "done").contains(issue.status().toLowerCase())) {
+                event(sprintId, "bead-completion-skipped", "COMPLETED", "bead=" + beadId + " status=" + issue.status());
+                continue;
+            }
+            beads.closeIssue(beadId, "Sprint completed successfully: " + sprintId);
+            event(sprintId, "bead-completed", "COMPLETED", "bead=" + beadId);
+        }
     }
 
     private void event(UUID sprintId, String type, String state, String payload) {

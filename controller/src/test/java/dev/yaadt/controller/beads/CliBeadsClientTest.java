@@ -24,9 +24,20 @@ class CliBeadsClientTest {
                 .containsExactly("bd-1");
     }
 
+    @Test
+    void closesIssueWithCompletionReason() {
+        TestClient client = new TestClient("[]");
+
+        client.closeIssue("bd-1", "Sprint completed successfully: sprint-1");
+
+        assertThat(client.lastCommand)
+                .containsExactly("close", "bd-1", "--reason", "Sprint completed successfully: sprint-1");
+    }
+
     private static final class TestClient extends CliBeadsClient {
 
         private final String json;
+        private List<String> lastCommand;
 
         private TestClient(String json) {
             super(new ObjectMapper(), new BeadsProperties());
@@ -52,6 +63,12 @@ class CliBeadsClientTest {
             } catch (Exception e) {
                 throw new AssertionError(e);
             }
+        }
+
+        @Override
+        protected com.fasterxml.jackson.databind.JsonNode execute(List<String> arguments) {
+            lastCommand = List.copyOf(arguments);
+            return new ObjectMapper().createObjectNode();
         }
     }
 }

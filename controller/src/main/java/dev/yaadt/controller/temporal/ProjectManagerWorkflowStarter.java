@@ -8,6 +8,8 @@ import dev.yaadt.controller.sprint.SprintCommandService;
 import dev.yaadt.controller.sprint.SprintPlanVersionRepository;
 import dev.yaadt.controller.sprint.SprintRepository;
 import dev.yaadt.controller.sprint.SprintCommandRequest;
+import dev.yaadt.controller.manager.ProjectManagerService;
+import dev.yaadt.controller.manager.ProjectManagerPlanningAttemptService;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/projects/{projectId}/project-manager")
@@ -27,15 +31,20 @@ public class ProjectManagerWorkflowStarter {
     private final SprintPlanVersionRepository plans;
     private final SprintCommandService commands;
     private final TemporalWorkflowStarter sprintStarter;
+    private final ProjectManagerService managers;
+    private final ProjectManagerPlanningAttemptService attempts;
 
     public ProjectManagerWorkflowStarter(WorkflowClient client, TemporalProperties properties, SprintRepository sprints,
-            SprintPlanVersionRepository plans, SprintCommandService commands, TemporalWorkflowStarter sprintStarter) {
+            SprintPlanVersionRepository plans, SprintCommandService commands, TemporalWorkflowStarter sprintStarter,
+            ProjectManagerService managers, ProjectManagerPlanningAttemptService attempts) {
         this.client = client; this.properties = properties; this.sprints = sprints; this.plans = plans;
-        this.commands = commands; this.sprintStarter = sprintStarter;
+        this.commands = commands; this.sprintStarter = sprintStarter; this.managers = managers; this.attempts = attempts;
     }
 
     @PostMapping("/start")
-    public ResponseEntity<Map<String, String>> start(@PathVariable UUID projectId) {
+    public ResponseEntity<Map<String, String>> start(@PathVariable UUID projectId, @Valid @RequestBody ProjectManagerStartRequest request) {
+        managers.setPlanningObjective(projectId, request.objective());
+        managers.clearPlanningFailure(projectId);
         String workflowId = "yaadt-project-manager-" + projectId;
         var workflow = client.newWorkflowStub(TemporalWorkflowContracts.ProjectManagerWorkflow.class,
                 WorkflowOptions.newBuilder().setWorkflowId(workflowId).setTaskQueue(properties.taskQueue()).build());
@@ -45,6 +54,19 @@ public class ProjectManagerWorkflowStarter {
             return ResponseEntity.accepted().body(Map.of("workflowId", workflowId, "state", "ALREADY_PLANNING"));
         }
         return ResponseEntity.accepted().body(Map.of("workflowId", workflowId, "state", "PLANNING"));
+    }
+
+    @PostMapping("/cancel")
+    public ResponseEntity<Map<String, String>> cancel(@PathVariable UUID projectId) {
+        String workflowId = "yaadt-project-manager-" + projectId;
+        var workflow = client.newWorkflowStub(TemporalWorkflowContracts.ProjectManagerWorkflow.class, workflowId);
+        try {
+            io.temporal.client.WorkflowStub.fromTyped(workflow).cancel();
+        } catch (WorkflowNotFoundException ignored) {
+            // The workflow may have completed between the status check and cancellation.
+        }
+        attempts.cancelLatest(projectId);
+        return ResponseEntity.accepted().body(Map.of("workflowId", workflowId, "state", "CANCEL_REQUESTED"));
     }
 
     @PostMapping("/approve")

@@ -75,7 +75,15 @@ public final class TemporalWorkflowImplementations {
         @Override public String executeAgentRun(String runId) { Activity.getExecutionContext().heartbeat("running"); return runs.executeRun(UUID.fromString(runId)).id().toString(); }
         @Override public String executeSprint(String sprintId) { Activity.getExecutionContext().heartbeat("starting sprint"); return runs.executeSprint(UUID.fromString(sprintId)); }
         @Override public String captureCheckpoint(String runId) { return runId; }
-        @Override public String generateProjectPlan(String projectId) { return planning.generate(UUID.fromString(projectId)).toString(); }
+        @Override public String generateProjectPlan(String projectId) {
+            UUID id = UUID.fromString(projectId);
+            try {
+                return planning.generate(id).toString();
+            } catch (RuntimeException failure) {
+                planning.recordFailure(id, failure.getMessage());
+                throw failure;
+            }
+        }
         @Override public String approveAndExecuteSprint(String sprintId) {
             UUID id = UUID.fromString(sprintId);
             int version = plans.findTopBySprintIdOrderByVersionDesc(id).orElseThrow().getVersion();

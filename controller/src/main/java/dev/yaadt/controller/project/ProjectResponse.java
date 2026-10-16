@@ -6,6 +6,7 @@ import java.util.UUID;
 public record ProjectResponse(
         UUID id,
         String name,
+        String objective,
         String beadsProject,
         String workspaceProvider,
         boolean active,
@@ -21,6 +22,7 @@ public record ProjectResponse(
         return new ProjectResponse(
                 project.getId(),
                 project.getName(),
+                project.getObjective(),
                 project.getBeadsProject(),
                 project.getWorkspaceProvider(),
                 project.isActive(),

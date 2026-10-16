@@ -4,7 +4,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -17,7 +16,7 @@ public class SprintNarrativeService {
         this.clock = clock;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void record(UUID sprintId, String type, String state, String payload) {
         audit.save(new AuditEvent("SYSTEM", "agent-runner", sprintId, type, null, state, payload, Instant.now(clock)));
     }

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 
 public record ProjectRequest(
         @NotBlank @Size(max = 120) String name,
+        @Size(max = 500) String objective,
         @NotBlank @Size(max = 120) String beadsProject,
         @NotBlank @Size(max = 40) String workspaceProvider,
         Boolean active,

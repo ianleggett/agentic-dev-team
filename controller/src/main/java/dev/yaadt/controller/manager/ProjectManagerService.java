@@ -31,4 +31,16 @@ public class ProjectManagerService {
         manager.assign(request.agentProfileVersionId(), Instant.now(clock));
         return ProjectManagerResponse.from(managers.save(manager));
     }
+    public void clearPlanningFailure(UUID projectId) {
+        managers.findByProjectId(projectId).ifPresent(manager -> {
+            manager.clearPlanningFailure(Instant.now(clock));
+            managers.save(manager);
+        });
+    }
+    public void setPlanningObjective(UUID projectId, String objective) {
+        managers.findByProjectId(projectId).ifPresent(manager -> {
+            manager.setPlanningObjective(objective, Instant.now(clock));
+            managers.save(manager);
+        });
+    }
 }

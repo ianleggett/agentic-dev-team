@@ -20,6 +20,9 @@ public class Project {
     @Column(nullable = false, length = 120)
     private String name;
 
+    @Column(nullable = false, length = 500)
+    private String objective;
+
     @Column(name = "beads_project", nullable = false, length = 120)
     private String beadsProject;
 
@@ -53,8 +56,9 @@ public class Project {
     protected Project() {
     }
 
-    public Project(String name, String beadsProject, String workspaceProvider) {
+    public Project(String name, String objective, String beadsProject, String workspaceProvider) {
         this.name = name;
+        this.objective = objective;
         this.beadsProject = beadsProject;
         this.workspaceProvider = workspaceProvider;
         this.active = true;
@@ -67,6 +71,7 @@ public class Project {
 
     public void update(
             String name,
+            String objective,
             String beadsProject,
             String workspaceProvider,
             boolean active,
@@ -76,6 +81,7 @@ public class Project {
             int maxConcurrentRunsPerProject,
             boolean approvalRequired) {
         this.name = name;
+        this.objective = objective;
         this.beadsProject = beadsProject;
         this.workspaceProvider = workspaceProvider;
         this.active = active;
@@ -99,6 +105,10 @@ public class Project {
 
     public String getName() {
         return name;
+    }
+
+    public String getObjective() {
+        return objective;
     }
 
     public String getBeadsProject() {

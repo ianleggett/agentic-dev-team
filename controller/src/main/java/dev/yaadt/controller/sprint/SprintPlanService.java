@@ -142,12 +142,13 @@ public class SprintPlanService {
     }
     private void validate(UUID projectId, SprintPlanRequest request) {
         if (!directives.existsById(request.directiveRevisionId())) invalid("Directive revision not found");
-        Set<String> locks = new HashSet<>();
         for (SprintStepRequest step : request.steps()) {
             if (!profiles.existsById(step.agentProfileVersionId())) invalid("Agent profile version not found");
             if (!repositories.findAllById(step.repositoryIds()).stream().map(r -> r.getId()).collect(java.util.stream.Collectors.toSet())
                     .containsAll(step.repositoryIds())) invalid("Repository reference not found");
-            if (!locks.addAll(step.resourceLocks())) invalid("Duplicate resource lock");
+            if (new HashSet<>(step.resourceLocks()).size() != step.resourceLocks().size()) {
+                invalid("Duplicate resource lock in step: " + step.stepKey());
+            }
         }
         try {
             DependencyGraphValidator.validate(request.steps());
@@ -158,12 +159,10 @@ public class SprintPlanService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
         Map<String, BeadsIssue> relevant = beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getBeadsProject())).stream()
                 .collect(java.util.stream.Collectors.toMap(BeadsIssue::id, issue -> issue, (left, right) -> left));
-        Set<String> assigned = new HashSet<>();
         for (SprintStepRequest step : request.steps()) {
             for (String beadId : step.beadIds()) {
                 BeadsIssue issue = relevant.get(beadId);
                 if (issue == null) invalid("Bead is not in the project scope: " + beadId);
-                if (!assigned.add(beadId)) invalid("Bead is assigned to multiple steps: " + beadId);
                 if (Set.of("closed", "completed", "cancelled", "canceled", "done").contains(issue.status().toLowerCase())) {
                     invalid("Bead is terminal: " + beadId);
                 }

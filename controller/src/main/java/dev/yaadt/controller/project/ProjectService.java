@@ -32,7 +32,7 @@ public class ProjectService {
     }
 
     public ProjectResponse create(ProjectRequest request) {
-        Project project = new Project(request.name(), request.beadsProject(), request.workspaceProvider());
+        Project project = new Project(request.name(), request.objective() == null ? "" : request.objective(), request.beadsProject(), request.workspaceProvider());
         project.touch(Instant.now(clock));
         return ProjectResponse.from(repository.save(project));
     }
@@ -41,6 +41,7 @@ public class ProjectService {
         Project project = find(id);
         project.update(
                 request.name(),
+                request.objective() == null || request.objective().isBlank() ? project.getObjective() : request.objective(),
                 request.beadsProject(),
                 request.workspaceProvider(),
                 request.active() == null || request.active(),

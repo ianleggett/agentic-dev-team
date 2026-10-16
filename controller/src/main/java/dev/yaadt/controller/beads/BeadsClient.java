@@ -12,6 +12,8 @@ public interface BeadsClient {
 
     void claimIssue(String issueId);
 
+    void closeIssue(String issueId, String reason);
+
     void addComment(String issueId, String comment);
 
     record CreateBeadsIssue(String title, String description, List<String> labels) {

@@ -56,11 +56,16 @@ public class CliBeadsClient implements BeadsClient {
     }
 
     @Override
+    public void closeIssue(String issueId, String reason) {
+        execute(List.of("close", issueId, "--reason", reason));
+    }
+
+    @Override
     public void addComment(String issueId, String comment) {
         execute(List.of("comment", issueId, comment));
     }
 
-    private JsonNode execute(List<String> arguments) {
+    protected JsonNode execute(List<String> arguments) {
         List<String> command = new ArrayList<>();
         command.add(properties.getCommand());
         command.addAll(arguments);

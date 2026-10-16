@@ -30,6 +30,7 @@ class ProjectControllerTest {
         String body = """
                 {
                   "name": "OnlyHabits",
+                  "objective": "Ship the OnlyHabits MVP",
                   "beadsProject": "onlyhabits",
                   "workspaceProvider": "local-devbox",
                   "defaultBranch": "main",
@@ -58,6 +59,7 @@ class ProjectControllerTest {
         String update = """
                 {
                   "name": "OnlyHabits Platform",
+                  "objective": "Ship the OnlyHabits platform MVP",
                   "beadsProject": "onlyhabits",
                   "workspaceProvider": "local-devbox",
                   "active": false,

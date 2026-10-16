@@ -2,11 +2,14 @@ package dev.yaadt.controller.manager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import dev.yaadt.controller.audit.SprintNarrativeService;
 import dev.yaadt.controller.beads.BeadsClient;
 import dev.yaadt.controller.beads.BeadsIssue;
 import dev.yaadt.controller.beads.BeadsProjectLabels;
 import dev.yaadt.controller.directive.DirectiveRepository;
+import dev.yaadt.controller.directive.DirectiveRevision;
+import dev.yaadt.controller.user.CurrentUserService;
 import dev.yaadt.controller.executor.AgentExecutor;
 import dev.yaadt.controller.executor.AgentBackendConfig;
 import dev.yaadt.controller.executor.AgentRunRequest;
@@ -28,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 @Service
 public class ProjectManagerPlanningService {
@@ -43,22 +47,33 @@ public class ProjectManagerPlanningService {
     private final SprintNarrativeService narrative;
     private final Clock clock;
     private final BeadsClient beads;
+    private final ProjectManagerPlanningAttemptService attempts;
+    private final CurrentUserService users;
 
     public ProjectManagerPlanningService(ProjectRepository projects, RepositoryRepository repositories,
             DirectiveRepository directives, AgentProfileRepository profiles, AgentProfileVersionRepository versions,
             ProjectManagerRepository assignments, SprintPlanService plans, AgentExecutor executor, ObjectMapper mapper,
-            SprintNarrativeService narrative, Clock clock, BeadsClient beads) {
+            SprintNarrativeService narrative, Clock clock, BeadsClient beads, ProjectManagerPlanningAttemptService attempts,
+            CurrentUserService users) {
         this.projects = projects; this.repositories = repositories; this.directives = directives; this.profiles = profiles;
         this.assignments = assignments;
         this.versions = versions; this.plans = plans; this.executor = executor; this.mapper = mapper;
-        this.narrative = narrative; this.clock = clock; this.beads = beads;
+        this.narrative = narrative; this.clock = clock; this.beads = beads; this.attempts = attempts;
+        this.users = users;
     }
 
     @Transactional
     public UUID generate(UUID projectId) {
         var project = projects.findById(projectId).orElseThrow(() -> new IllegalArgumentException("Project not found"));
-        var directive = directives.findTopByProjectIdOrderByVersionDesc(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project has no directive"));
+        var directive = directives.findTopByProjectIdOrderByVersionDesc(projectId).orElseGet(() -> {
+            if (project.getObjective() == null || project.getObjective().isBlank()) {
+                throw new IllegalArgumentException("Project has no directive");
+            }
+            int version = directives.findTopByProjectIdOrderByVersionDesc(projectId)
+                    .map(existing -> existing.getVersion() + 1).orElse(1);
+            return directives.save(new DirectiveRevision(projectId, version, project.getObjective(),
+                    users.resolve(null, "Project directive").getId(), clock.instant()));
+        });
         var managerVersion = assignments.findByProjectId(projectId)
                 .map(a -> versions.findById(a.getAgentProfileVersionId()).orElse(null)).orElse(null);
         if (managerVersion == null) {
@@ -72,7 +87,9 @@ public class ProjectManagerPlanningService {
                 .map(issue -> "id=" + issue.id() + " status=" + issue.status() + " labels=" + issue.labels()
                         + " dependsOn=" + issue.dependencyIds() + " title=" + issue.title() + " description=" + issue.description())
                 .reduce("", (a, b) -> a + b + "\n");
-        String context = "PROJECT\nname=" + project.getName() + " beadsProject=" + project.getBeadsProject()
+        String sprintObjective = assignments.findByProjectId(projectId).map(ProjectManager::getPlanningObjective).orElse("");
+        if (sprintObjective == null || sprintObjective.isBlank()) throw new IllegalArgumentException("sprint objective is blank");
+        String context = "PROJECT\nname=" + project.getName() + " sprintObjective=" + sprintObjective + " beadsProject=" + project.getBeadsProject()
                 + " beadsProjectLabel=" + projectLabel
                 + " defaultBranch=" + project.getDefaultBranch() + "\nDIRECTIVE\n" + directive.getContent()
                 + "\nREPOSITORIES\n" + repositories.findByProjectIdOrderByName(projectId).stream()
@@ -92,13 +109,25 @@ public class ProjectManagerPlanningService {
                 + "security=review security and permissions\n"
                 + "docs=write and update documentation\n"
                 + "ui-assessor=assess user interface behavior and accessibility\n";
-        String prompt = managerVersion.getTeamPrompt() + "\n\nCreate a sprint plan from this context. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, proposedBeads, and steps. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
-        AgentRunResult result = executor.execute(new AgentRunRequest("project-manager:" + projectId + ":" + clock.instant(), UUID.randomUUID(), 1,
-                "/workspace/runs/project-manager-" + projectId, prompt, java.util.Map.of(),
-                new AgentBackendConfig(managerVersion.getProviderIdentifier(), managerVersion.getModelIdentifier(), managerVersion.getBaseUrl(), managerVersion.getApiKey())));
-        if (result.state() != AgentRunResult.State.SUCCEEDED) throw new IllegalStateException(result.errorCode() + ": " + result.errorMessage());
+        String prompt = managerVersion.getTeamPrompt() + "\n\nCreate a sprint plan for the explicit SPRINT OBJECTIVE in the PROJECT context. Preserve that objective as the plan objective unless a more precise wording is required. You MUST return a non-empty objective, at least one step, and at least one Bead assignment. If RELEVANT BEADS is empty or does not cover the work, you MUST create at least one proposedBead and reference its proposalKey from a step's beadIds. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, proposedBeads, and steps. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
+        UUID attemptId = attempts.start(projectId, prompt, managerVersion.getProviderIdentifier(), managerVersion.getModelIdentifier(), managerVersion.getBaseUrl());
+        AgentRunResult result;
+        try {
+            result = executor.execute(new AgentRunRequest("project-manager:" + projectId + ":" + clock.instant(), UUID.randomUUID(), 1,
+                    "/workspace/runs/project-manager-" + projectId, prompt, java.util.Map.of(),
+                    new AgentBackendConfig(managerVersion.getProviderIdentifier(), managerVersion.getModelIdentifier(), managerVersion.getBaseUrl(), managerVersion.getApiKey())));
+        } catch (RuntimeException failure) {
+            attempts.finish(attemptId, "FAILED", "", "EXECUTOR_FAILED", failure.getMessage());
+            throw failure;
+        }
+        String modelOutput = result.events().stream().map(event -> event.payload()).reduce("", (a, b) -> a + b);
+        if (result.state() != AgentRunResult.State.SUCCEEDED) {
+            attempts.finish(attemptId, result.state().name(), modelOutput, result.errorCode(), result.errorMessage());
+            throw new IllegalStateException(result.errorCode() + ": " + result.errorMessage());
+        }
         try {
             JsonNode plan = mapper.readTree(extractJson(result));
+            validateGeneratedPlan(plan);
             Map<String, String> beadIds = createProposedBeads(plan, projectLabel, relevantBeads);
             List<SprintStepRequest> stepRequests = new ArrayList<>();
             for (JsonNode step : plan.withArray("steps")) {
@@ -116,17 +145,60 @@ public class ProjectManagerPlanningService {
             UUID sprintId = plans.create(projectId, request, "project-manager", "Project Manager").id();
             narrative.record(sprintId, "manager-plan-created", "DRAFT", "project-manager generated and assigned " + stepRequests.size()
                     + " steps and created " + beadIds.size() + " gap Beads; awaiting approval");
+            attempts.finish(attemptId, "SUCCEEDED", modelOutput, null, null);
             return sprintId;
         } catch (Exception exception) {
+            attempts.finish(attemptId, "FAILED", modelOutput, "INVALID_PLAN", exception.getMessage());
             throw new IllegalStateException("Project manager returned invalid plan: " + exception.getMessage(), exception);
         }
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordFailure(UUID projectId, String error) {
+        assignments.findByProjectId(projectId).ifPresent(manager -> {
+            manager.recordPlanningFailure(error, clock.instant());
+            assignments.save(manager);
+        });
+    }
+
     private String extractJson(AgentRunResult result) {
-        String text = result.events().stream().map(e -> e.payload()).reduce("", (a, b) -> a + b);
+        String text = result.events().stream().map(event -> extractTextPayload(event.payload())).reduce("", (a, b) -> a + b);
         int start = text.indexOf('{'); int end = text.lastIndexOf('}');
         if (start < 0 || end <= start) throw new IllegalArgumentException("no JSON object in manager response");
         return text.substring(start, end + 1);
+    }
+    private String extractTextPayload(String payload) {
+        try {
+            JsonNode event = mapper.readTree(payload);
+            JsonNode text = event.path("part").path("text");
+            if (text.isTextual()) return text.asText();
+            if (event.has("type")) return "";
+        } catch (JsonProcessingException ignored) {
+            // The runner may already provide a raw model response rather than an event envelope.
+        }
+        return payload;
+    }
+    static void validateGeneratedPlan(JsonNode plan) {
+        if (plan.path("objective").asText().isBlank()) {
+            throw new IllegalArgumentException("generated plan objective is blank");
+        }
+        JsonNode steps = plan.path("steps");
+        if (!steps.isArray() || steps.isEmpty()) {
+            throw new IllegalArgumentException("generated plan contains no steps");
+        }
+        for (JsonNode step : steps) {
+            if (step.path("stepKey").asText().isBlank()) {
+                throw new IllegalArgumentException("generated plan contains a step with no stepKey");
+            }
+            if (!step.path("beadIds").isArray() || step.path("beadIds").isEmpty()) {
+                throw new IllegalArgumentException("generated plan step has no Beads: " + step.path("stepKey").asText());
+            }
+            for (JsonNode beadId : step.path("beadIds")) {
+                if (beadId.asText().isBlank()) {
+                    throw new IllegalArgumentException("generated plan step has a blank Bead reference: " + step.path("stepKey").asText());
+                }
+            }
+        }
     }
     private List<String> strings(JsonNode node, String field) { List<String> values = new ArrayList<>(); node.withArray(field).forEach(v -> values.add(v.asText())); return values; }
     private List<String> resolveBeadIds(JsonNode step, Map<String, String> proposals) {
