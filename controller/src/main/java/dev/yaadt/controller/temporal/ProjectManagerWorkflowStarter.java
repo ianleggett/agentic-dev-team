@@ -71,6 +71,12 @@ public class ProjectManagerWorkflowStarter {
 
     @PostMapping("/approve")
     public ResponseEntity<Map<String, String>> approve(@PathVariable UUID projectId) {
+        boolean draftExists = sprints.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
+                .anyMatch(candidate -> candidate.getState().equals("DRAFT"));
+        if (!draftExists) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No draft sprint plan is awaiting Project Manager approval");
+        }
         String workflowId = "yaadt-project-manager-" + projectId;
         var workflow = client.newWorkflowStub(TemporalWorkflowContracts.ProjectManagerWorkflow.class, workflowId);
         try {
