@@ -205,7 +205,10 @@ flowchart LR
     IDEA[Idea] --> SPEC[Specification]
     SPEC --> ARCH[Architecture]
     ARCH --> PLAN[Beads work graph]
-    PLAN --> DEV[Implementation worker]
+    PLAN --> DP[DeliveryPlan]
+    DP --> APPROVE[Review and approval]
+    APPROVE --> SPRINT[Generate Sprint from live Beads]
+    SPRINT --> DEV[Implementation worker]
     DEV --> TEST[QA]
     TEST --> REVIEW[Code review]
     REVIEW --> SEC[Security review]
@@ -231,6 +234,52 @@ Beads is used throughout the lifecycle for:
 
 This means a worker does not need the previous worker's chat history to
 continue the job.
+
+## Controller-managed delivery
+
+The current runtime adds a Spring Boot controller and a browser dashboard on
+top of the Beads work graph. The controller owns orchestration state; Beads
+remains the authoritative source for work items, dependencies and lifecycle
+state.
+
+The normal delivery flow is:
+
+1. Create or select a project and assign a Project Manager profile.
+2. Start Project Manager planning with an objective.
+3. The Project Manager creates a durable, versioned `DeliveryPlan`.
+4. Review the proposed milestones and Beads in the dashboard.
+5. Submit and approve the plan.
+6. Generate the next bounded Sprint just in time from current Beads readiness.
+7. Execute the Sprint and inspect its immutable Bead snapshots and audit data.
+
+DeliveryPlan approval does not copy Beads into a second task database. At
+Sprint generation time, the controller reads live Beads, validates ownership,
+dependencies and resource locks, and records the selected Bead state as an
+immutable execution snapshot. Later Beads changes can therefore be compared
+with the state that was actually planned and executed.
+
+Beads mutations such as claims, releases and closes use an idempotent,
+retry-safe dispatcher backed by a persistent outbox. This prevents a
+transient controller or CLI failure from silently losing a lifecycle update.
+
+### Controller services
+
+| Service | Purpose | Default URL |
+| --- | --- | --- |
+| Controller dashboard | DeliveryPlan, Sprint, Bead readiness and run operations | `http://localhost:8090` |
+| Controller API | Project, planning, DeliveryPlan and Sprint APIs | `http://localhost:8080` |
+| Temporal UI | Workflow visibility and operations | `http://localhost:8233` |
+| Beads UI | Beads work graph visibility | `http://localhost:3007` |
+| Team Runs UI | Worker run history and redacted output | `http://localhost:3008` |
+
+The controller API health endpoint is:
+
+``` bash
+curl http://localhost:8080/actuator/health
+```
+
+The controller API port and dashboard port can be changed with
+`YAADT_CONTROLLER_API_PORT` and `YAADT_CONTROLLER_DASHBOARD_PORT`.
 
 ## Beads routing
 
@@ -376,6 +425,21 @@ Check:
 ``` bash
 docker compose ps
 ```
+
+The first startup runs the controller database migrations automatically. The
+controller API, Temporal worker and dashboard are included in the default
+Compose stack.
+
+The main operator dashboard is exposed on:
+
+``` text
+http://localhost:8090
+```
+
+Use the dashboard to register projects, configure repositories and agent
+profiles, start Project Manager planning, approve DeliveryPlans, generate
+Sprints and inspect execution snapshots. The API is exposed on port `8080`
+for integrations and health checks.
 
 The Beads UI is exposed on:
 
@@ -940,6 +1004,11 @@ identity is required.
 agentic-dev-team/
 ├── beads-ui/
 │   └── Dockerfile
+├── controller/
+│   ├── src/main/java/       # Spring Boot API, orchestration and workflows
+│   ├── src/main/resources/  # PostgreSQL migrations
+│   └── src/test/             # controller and integration tests
+├── controller-dashboard/    # static operator dashboard
 ├── devbox/
 │   ├── Dockerfile
 │   ├── bin/
@@ -1078,7 +1147,8 @@ Useful next steps include:
 -   [ ] worker concurrency limits;
 -   [ ] model selection by role;
 -   [ ] task duration/token/LLM metrics;
--   [ ] richer Beads dashboard integration;
+-   [x] controller dashboard integration for DeliveryPlans, Bead readiness,
+    Sprint history and immutable execution snapshots;
 -   [ ] CI execution of agent-generated changes;
 -   [ ] stronger sandboxing of individual implementation workers;
 -   [ ] reproducible/pinned dependency manifests and automated update
