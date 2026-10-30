@@ -25,6 +25,9 @@ import dev.yaadt.controller.manager.ControllerLeaseService;
 import dev.yaadt.controller.beads.BeadsClient;
 import dev.yaadt.controller.beads.BeadsIssue;
 import dev.yaadt.controller.beads.BeadsProjectLabels;
+import dev.yaadt.controller.beads.BeadsStatus;
+import dev.yaadt.controller.beads.BeadsMutationOutbox;
+import dev.yaadt.controller.beads.BeadsMutationOutboxRepository;
 import dev.yaadt.controller.project.ProjectRepository;
 
 @Service
@@ -45,20 +48,27 @@ public class AgentRunService {
     private final ControllerLeaseService leases;
     private final ProjectRepository projects;
     private final BeadsClient beads;
+    private final BeadsMutationOutboxRepository beadMutations;
 
     public AgentRunService(AgentRunRepository runs, RunEventRepository events, AgentExecutor executor,
             SprintPlanVersionRepository plans, SprintStepRepository steps, AgentProfileVersionRepository profiles,
             AgentProfileRepository profileDefinitions, SprintRepository sprints, SprintNarrativeService narrative, RepositoryRepository repositories, Clock clock,
-            ControllerLeaseService leases, ProjectRepository projects, BeadsClient beads) {
+            ControllerLeaseService leases, ProjectRepository projects, BeadsClient beads,
+            BeadsMutationOutboxRepository beadMutations) {
         this.runs = runs; this.events = events; this.executor = executor; this.plans = plans; this.steps = steps;
         this.profiles = profiles; this.sprints = sprints; this.narrative = narrative; this.repositories = repositories; this.clock = clock;
         this.profileDefinitions = profileDefinitions; this.mapper = new ObjectMapper(); this.leases = leases;
-        this.projects = projects; this.beads = beads;
+        this.projects = projects; this.beads = beads; this.beadMutations = beadMutations;
     }
 
     public AgentRunResponse execute(UUID stepId) {
         AgentRunResponse run = prepareRun(stepId);
         return executeRun(run.id());
+    }
+
+    private AgentRunResponse execute(UUID stepId, String workflowId, String executionId) {
+        AgentRunResponse run = prepareRun(stepId);
+        return executeRun(run.id(), workflowId, executionId);
     }
 
     public AgentRunResponse createRun(UUID stepId) {
@@ -91,10 +101,17 @@ public class AgentRunService {
     }
 
     public AgentRunResponse executeRun(UUID runId) {
+        return executeRun(runId, null, null);
+    }
+
+    private AgentRunResponse executeRun(UUID runId, String workflowId, String executionId) {
         AgentRun run = runs.findById(runId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent run not found"));
-        if (run.getState().equals("SUCCEEDED")) return AgentRunResponse.from(run);
+        if (Set.of("SUCCEEDED", "STARTING", "RUNNING", "CANCEL_REQUESTED", "UNKNOWN", "RECOVERY_REQUIRED")
+                .contains(run.getState())) return AgentRunResponse.from(run);
+        if (workflowId != null) run.bindTemporalExecution(workflowId, executionId);
         run.start(Instant.now(clock));
+        runs.save(run);
         var step = steps.findById(run.getStepId()).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Sprint step not found"));
         var profile = profileFor(step, run.getAttemptNumber());
@@ -108,8 +125,11 @@ public class AgentRunService {
         String testCommands = stepRepositories.stream().map(dev.yaadt.controller.repository.Repository::getTestCommands)
                 .filter(value -> value != null && !value.isBlank()).reduce((left, right) -> left + "\n" + right).orElse("");
         List<String> beadIds = step.getBeadIds().isBlank() ? List.of() : Arrays.stream(step.getBeadIds().split(",")).map(String::trim).filter(value -> !value.isBlank()).toList();
+        int maxSteps = profile == null ? 100 : profile.getMaxSteps();
+        int timeoutSeconds = profile == null ? 1800 : profile.getTimeoutSeconds();
         AgentRunResult result = executor.execute(new AgentRunRequest(run.getIdempotencyKey(), run.getStepId(),
-                run.getAttemptNumber(), workspace, prompt, java.util.Map.of(), backend, beadIds, buildCommands, testCommands));
+                run.getAttemptNumber(), workspace, prompt, java.util.Map.of(), backend, beadIds, buildCommands, testCommands,
+                maxSteps, timeoutSeconds));
         List<RunEvent> existing = events.findByAgentRunIdOrderBySequenceNumberAsc(run.getId());
         List<AgentRunEvent> transcript = new ArrayList<>();
         for (int index = 0; index < result.events().size(); index++) {
@@ -122,8 +142,18 @@ public class AgentRunService {
     }
 
     public String executeSprint(UUID sprintId) {
+        return executeSprint(sprintId, null, null);
+    }
+
+    public String executeSprint(UUID sprintId, String workflowId, String executionId) {
         var plan = plans.findTopBySprintIdOrderByVersionDesc(sprintId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Sprint plan not found"));
+        var existingSprint = sprints.findById(sprintId).orElse(null);
+        if (existingSprint != null && "COMPLETED".equals(existingSprint.getState())) return "ALREADY_COMPLETED";
+        sprints.findById(sprintId).ifPresent(sprint -> {
+            if (workflowId != null) sprint.bindTemporalExecution(workflowId, executionId, Instant.now(clock));
+            if (!"RUNNING".equals(sprint.getState())) sprint.transition("RUNNING", Instant.now(clock));
+        });
         event(sprintId, "execution-started", "RUNNING", "workflow activity started");
         int completed = 0;
         String sprintOwner = "sprint:" + sprintId;
@@ -139,22 +169,44 @@ public class AgentRunService {
                 pending.remove(step);
                 String owner = sprintOwner + ":step:" + step.getId();
                 List<String> lockKeys = lockKeys(step);
-                for (String lockKey : lockKeys) leases.acquire("resource:" + lockKey, owner);
+                List<String> acquiredLocks = new ArrayList<>();
                 try {
+                for (String lockKey : lockKeys) {
+                    leases.acquire("resource:" + lockKey, owner);
+                    acquiredLocks.add(lockKey);
+                }
                 var profile = profiles.findById(step.getAgentProfileVersionId()).orElse(null);
                 String agent = "step=" + step.getStepKey() + " agent=" + step.getAgentRole();
                 if (profile != null) agent += " profile=" + profile.getPromptReference() + " model=" + profile.getProviderIdentifier() + "/" + profile.getModelIdentifier();
                 event(sprintId, "step-started", "RUNNING", agent);
-                AgentRunResponse run = execute(step.getId());
-                String detail = "step=" + step.getStepKey() + " run=" + run.id();
-                if (run.errorCode() != null) detail += " errorCode=" + run.errorCode();
-                if (run.errorMessage() != null) detail += " error=" + run.errorMessage();
-                event(sprintId, "step-completed", run.state(), detail);
-                if (!"SUCCEEDED".equals(run.state())) throw new IllegalStateException("Required step failed: " + step.getStepKey());
-                completed++;
-                completedKeys.add(step.getStepKey());
+                List<String> claimedBeads = new ArrayList<>();
+                try {
+                    for (String beadId : beadIds(step)) {
+                        beads.claimIssue(beadId);
+                        claimedBeads.add(beadId);
+                    }
+                    AgentRunResponse run = execute(step.getId(), workflowId, executionId);
+                    String detail = "step=" + step.getStepKey() + " run=" + run.id();
+                    if (run.errorCode() != null) detail += " errorCode=" + run.errorCode();
+                    if (run.errorMessage() != null) detail += " error=" + run.errorMessage();
+                    event(sprintId, "step-completed", run.state(), detail);
+                    if (!"SUCCEEDED".equals(run.state())) throw new IllegalStateException("Required step failed: " + step.getStepKey());
+                    completed++;
+                    completedKeys.add(step.getStepKey());
+                } catch (RuntimeException failure) {
+                    for (String beadId : claimedBeads) {
+                        try {
+                            beads.releaseClaim(beadId);
+                        } catch (RuntimeException ignored) {
+                            // Preserve the execution failure; the next retry can reconcile this actor's claim.
+                        }
+                    }
+                    throw failure;
+                }
                 } finally {
-                    for (int index = lockKeys.size() - 1; index >= 0; index--) leases.release("resource:" + lockKeys.get(index), owner);
+                    for (int index = acquiredLocks.size() - 1; index >= 0; index--) {
+                        leases.release("resource:" + acquiredLocks.get(index), owner);
+                    }
                 }
             }
             completeBeads(sprintId, sprintBeadIds);
@@ -162,7 +214,10 @@ public class AgentRunService {
             event(sprintId, "execution-completed", "COMPLETED", "steps=" + completed);
             return "EXECUTED_STEPS=" + completed;
         } catch (RuntimeException failure) {
-            sprints.findById(sprintId).ifPresent(sprint -> sprint.transition("FAILED", Instant.now(clock)));
+            sprints.findById(sprintId).ifPresent(sprint -> {
+                if (workflowId != null) sprint.markRecoveryRequired(failure.getMessage(), Instant.now(clock));
+                else sprint.transition("FAILED", Instant.now(clock));
+            });
             event(sprintId, "execution-failed", "FAILED", failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());
             throw failure;
         } finally {
@@ -190,12 +245,15 @@ public class AgentRunService {
     private void completeBeads(UUID sprintId, Set<String> beadIds) {
         for (String beadId : beadIds) {
             BeadsIssue issue = beads.getIssue(beadId);
-            if (Set.of("closed", "completed", "cancelled", "canceled", "done").contains(issue.status().toLowerCase())) {
+            if (BeadsStatus.isTerminal(issue.status())) {
                 event(sprintId, "bead-completion-skipped", "COMPLETED", "bead=" + beadId + " status=" + issue.status());
                 continue;
             }
-            beads.closeIssue(beadId, "Sprint completed successfully: " + sprintId);
-            event(sprintId, "bead-completed", "COMPLETED", "bead=" + beadId);
+            String mutationKey = "sprint:" + sprintId + ":bead-close:" + beadId;
+            beadMutations.findByMutationKey(mutationKey).orElseGet(() -> beadMutations.save(
+                    new BeadsMutationOutbox(sprintId, mutationKey, beadId, "CLOSE",
+                            "Sprint completed successfully: " + sprintId, Instant.now(clock))));
+            event(sprintId, "bead-completion-queued", "RUNNING", "bead=" + beadId);
         }
     }
 
@@ -223,7 +281,7 @@ public class AgentRunService {
         for (String beadId : Arrays.stream(step.getBeadIds().split(",")).map(String::trim).filter(value -> !value.isBlank()).toList()) {
             BeadsIssue issue = beads.getIssue(beadId);
             if (!issue.labels().contains(label)) throw new IllegalStateException("Bead is outside project scope: " + beadId);
-            if (Set.of("closed", "completed", "cancelled", "canceled", "done").contains(issue.status().toLowerCase())) {
+            if (BeadsStatus.isTerminal(issue.status())) {
                 throw new IllegalStateException("Bead is terminal: " + beadId);
             }
             context.append("id=").append(issue.id()).append(" status=").append(issue.status())

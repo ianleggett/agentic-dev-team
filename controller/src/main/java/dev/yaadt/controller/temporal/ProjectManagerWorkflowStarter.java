@@ -4,10 +4,9 @@ import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import io.temporal.client.WorkflowExecutionAlreadyStarted;
 import io.temporal.client.WorkflowNotFoundException;
-import dev.yaadt.controller.sprint.SprintCommandService;
-import dev.yaadt.controller.sprint.SprintPlanVersionRepository;
-import dev.yaadt.controller.sprint.SprintRepository;
-import dev.yaadt.controller.sprint.SprintCommandRequest;
+import dev.yaadt.controller.delivery.DeliveryPlanRepository;
+import dev.yaadt.controller.delivery.DeliveryPlanSchedulerService;
+import dev.yaadt.controller.delivery.DeliveryPlanService;
 import dev.yaadt.controller.manager.ProjectManagerService;
 import dev.yaadt.controller.manager.ProjectManagerPlanningAttemptService;
 import java.util.UUID;
@@ -27,18 +26,19 @@ import jakarta.validation.Valid;
 public class ProjectManagerWorkflowStarter {
     private final WorkflowClient client;
     private final TemporalProperties properties;
-    private final SprintRepository sprints;
-    private final SprintPlanVersionRepository plans;
-    private final SprintCommandService commands;
+    private final DeliveryPlanRepository deliveryPlans;
+    private final DeliveryPlanService deliveryPlanService;
+    private final DeliveryPlanSchedulerService scheduler;
     private final TemporalWorkflowStarter sprintStarter;
     private final ProjectManagerService managers;
     private final ProjectManagerPlanningAttemptService attempts;
 
-    public ProjectManagerWorkflowStarter(WorkflowClient client, TemporalProperties properties, SprintRepository sprints,
-            SprintPlanVersionRepository plans, SprintCommandService commands, TemporalWorkflowStarter sprintStarter,
+    public ProjectManagerWorkflowStarter(WorkflowClient client, TemporalProperties properties, DeliveryPlanRepository deliveryPlans,
+            DeliveryPlanService deliveryPlanService, DeliveryPlanSchedulerService scheduler, TemporalWorkflowStarter sprintStarter,
             ProjectManagerService managers, ProjectManagerPlanningAttemptService attempts) {
-        this.client = client; this.properties = properties; this.sprints = sprints; this.plans = plans;
-        this.commands = commands; this.sprintStarter = sprintStarter; this.managers = managers; this.attempts = attempts;
+        this.client = client; this.properties = properties; this.deliveryPlans = deliveryPlans;
+        this.deliveryPlanService = deliveryPlanService; this.scheduler = scheduler;
+        this.sprintStarter = sprintStarter; this.managers = managers; this.attempts = attempts;
     }
 
     @PostMapping("/start")
@@ -71,26 +71,22 @@ public class ProjectManagerWorkflowStarter {
 
     @PostMapping("/approve")
     public ResponseEntity<Map<String, String>> approve(@PathVariable UUID projectId) {
-        boolean draftExists = sprints.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
-                .anyMatch(candidate -> candidate.getState().equals("DRAFT"));
-        if (!draftExists) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No draft sprint plan is awaiting Project Manager approval");
-        }
+        var deliveryPlan = deliveryPlans.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
+                .filter(candidate -> candidate.getState().equals("DRAFT") || candidate.getState().equals("PENDING_APPROVAL"))
+                .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "No DeliveryPlan is awaiting Project Manager approval"));
         String workflowId = "yaadt-project-manager-" + projectId;
         var workflow = client.newWorkflowStub(TemporalWorkflowContracts.ProjectManagerWorkflow.class, workflowId);
         try {
             workflow.approve();
             return ResponseEntity.accepted().body(Map.of("workflowId", workflowId, "state", "APPROVED"));
         } catch (WorkflowNotFoundException completed) {
-            var sprint = sprints.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
-                    .filter(candidate -> candidate.getState().equals("DRAFT"))
-                    .findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                            "Project-manager workflow is complete and no draft sprint plan is awaiting approval"));
-            int version = plans.findTopBySprintIdOrderByVersionDesc(sprint.getId()).orElseThrow().getVersion();
-            commands.command(sprint.getId(), "approve", new SprintCommandRequest(version, "project manager approval"),
-                    "project-manager", "Project Manager", "project-manager-approval:" + sprint.getId() + ":" + version);
-            return sprintStarter.start(sprint.getId());
+            if ("DRAFT".equals(deliveryPlan.getState())) deliveryPlanService.submit(deliveryPlan.getId());
+            deliveryPlanService.approve(deliveryPlan.getId(),
+                    new dev.yaadt.controller.delivery.DeliveryPlanDecisionRequest(deliveryPlan.getCurrentVersion(), "Project Manager approval"),
+                    "project-manager");
+            var sprint = scheduler.generateNextSprint(deliveryPlan.getId(), "project-manager", "Project Manager");
+            return sprintStarter.start(sprint.id());
         }
     }
 }

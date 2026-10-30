@@ -2,6 +2,7 @@ package dev.yaadt.controller.temporal;
 
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
+import io.temporal.api.common.v1.WorkflowExecution;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,14 +38,17 @@ public class TemporalWorkflowStarter {
         if (!sprint.getState().equals("READY")) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Sprint must be READY before it can start");
         }
-        Instant now = Instant.now(clock);
-        sprint.transition("RUNNING", now);
-        audit.save(new AuditEvent("SYSTEM", "temporal", sprintId, "start", "READY", "RUNNING", "workflow started", now));
         String workflowId = "yaadt-sprint-" + sprintId;
         TemporalWorkflowContracts.SprintWorkflow workflow = client.newWorkflowStub(
                 TemporalWorkflowContracts.SprintWorkflow.class,
                 WorkflowOptions.newBuilder().setWorkflowId(workflowId).setTaskQueue(properties.taskQueue()).build());
-        WorkflowClient.start(workflow::run, sprintId.toString());
+        WorkflowExecution execution = WorkflowClient.start(workflow::run, sprintId.toString());
+        Instant now = Instant.now(clock);
+        sprint.bindTemporalExecution(workflowId, execution.getRunId(), now);
+        sprint.transition("RUNNING", now);
+        sprints.save(sprint);
+        audit.save(new AuditEvent("SYSTEM", "temporal", sprintId, "start", "READY", "RUNNING",
+                "workflow started workflowId=" + workflowId + " runId=" + execution.getRunId(), now));
         return ResponseEntity.accepted().body(Map.of("workflowId", workflowId, "state", "RUNNING"));
     }
 }

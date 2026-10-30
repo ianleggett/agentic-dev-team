@@ -18,9 +18,11 @@ import dev.yaadt.controller.profile.AgentProfileRepository;
 import dev.yaadt.controller.profile.AgentProfileVersionRepository;
 import dev.yaadt.controller.project.ProjectRepository;
 import dev.yaadt.controller.repository.RepositoryRepository;
-import dev.yaadt.controller.sprint.SprintPlanRequest;
-import dev.yaadt.controller.sprint.SprintPlanService;
 import dev.yaadt.controller.sprint.SprintStepRequest;
+import dev.yaadt.controller.delivery.DeliveryMilestoneRequest;
+import dev.yaadt.controller.delivery.DeliveryPlanBeadRequest;
+import dev.yaadt.controller.delivery.DeliveryPlanRequest;
+import dev.yaadt.controller.delivery.DeliveryPlanService;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +43,6 @@ public class ProjectManagerPlanningService {
     private final AgentProfileRepository profiles;
     private final AgentProfileVersionRepository versions;
     private final ProjectManagerRepository assignments;
-    private final SprintPlanService plans;
     private final AgentExecutor executor;
     private final ObjectMapper mapper;
     private final SprintNarrativeService narrative;
@@ -49,17 +50,19 @@ public class ProjectManagerPlanningService {
     private final BeadsClient beads;
     private final ProjectManagerPlanningAttemptService attempts;
     private final CurrentUserService users;
+    private final DeliveryPlanService deliveryPlans;
 
     public ProjectManagerPlanningService(ProjectRepository projects, RepositoryRepository repositories,
             DirectiveRepository directives, AgentProfileRepository profiles, AgentProfileVersionRepository versions,
-            ProjectManagerRepository assignments, SprintPlanService plans, AgentExecutor executor, ObjectMapper mapper,
+            ProjectManagerRepository assignments, AgentExecutor executor, ObjectMapper mapper,
             SprintNarrativeService narrative, Clock clock, BeadsClient beads, ProjectManagerPlanningAttemptService attempts,
-            CurrentUserService users) {
+            CurrentUserService users, DeliveryPlanService deliveryPlans) {
         this.projects = projects; this.repositories = repositories; this.directives = directives; this.profiles = profiles;
         this.assignments = assignments;
-        this.versions = versions; this.plans = plans; this.executor = executor; this.mapper = mapper;
+        this.versions = versions; this.executor = executor; this.mapper = mapper;
         this.narrative = narrative; this.clock = clock; this.beads = beads; this.attempts = attempts;
         this.users = users;
+        this.deliveryPlans = deliveryPlans;
     }
 
     @Transactional
@@ -109,7 +112,7 @@ public class ProjectManagerPlanningService {
                 + "security=review security and permissions\n"
                 + "docs=write and update documentation\n"
                 + "ui-assessor=assess user interface behavior and accessibility\n";
-        String prompt = managerVersion.getTeamPrompt() + "\n\nCreate a sprint plan for the explicit SPRINT OBJECTIVE in the PROJECT context. Preserve that objective as the plan objective unless a more precise wording is required. You MUST return a non-empty objective, at least one step, and at least one Bead assignment. If RELEVANT BEADS is empty or does not cover the work, you MUST create at least one proposedBead and reference its proposalKey from a step's beadIds. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, proposedBeads, and steps. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
+        String prompt = managerVersion.getTeamPrompt() + "\n\nCreate a durable delivery plan for the explicit SPRINT OBJECTIVE in the PROJECT context. Preserve that objective as the delivery-plan objective unless a more precise wording is required. The plan will be approved once, then a scheduler will generate bounded sprints just in time. You MUST return a non-empty objective, at least one milestone, at least one step, and at least one Bead assignment. If RELEVANT BEADS is empty or does not cover the work, you MUST create at least one proposedBead and reference its proposalKey from a step's beadIds. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, suggestedSprintBoundaries, milestones, proposedBeads, and steps. Each milestone must contain milestoneKey, title, and outcome. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
         UUID attemptId = attempts.start(projectId, prompt, managerVersion.getProviderIdentifier(), managerVersion.getModelIdentifier(), managerVersion.getBaseUrl());
         AgentRunResult result;
         try {
@@ -140,13 +143,10 @@ public class ProjectManagerPlanningService {
                         uuids(step, "repositoryIds"), step.path("successCriteria").asText(), step.path("failurePolicy").asText(),
                         strings(step, "dependsOn"), strings(step, "resourceLocks")));
             }
-            SprintPlanRequest request = new SprintPlanRequest(plan.path("objective").asText(), directive.getId(), plan.path("reasoning").asText(),
-                    plan.path("approvalPolicy").asText("human"), plan.path("failurePolicy").asText("stop"), stepRequests);
-            UUID sprintId = plans.create(projectId, request, "project-manager", "Project Manager").id();
-            narrative.record(sprintId, "manager-plan-created", "DRAFT", "project-manager generated and assigned " + stepRequests.size()
-                    + " steps and created " + beadIds.size() + " gap Beads; awaiting approval");
+            DeliveryPlanRequest deliveryPlanRequest = deliveryPlanRequest(plan, stepRequests, beadIds, relevantBeads, directive.getId());
+            UUID deliveryPlanId = deliveryPlans.create(projectId, deliveryPlanRequest, "project-manager", "Project Manager").id();
             attempts.finish(attemptId, "SUCCEEDED", modelOutput, null, null);
-            return sprintId;
+            return deliveryPlanId;
         } catch (Exception exception) {
             attempts.finish(attemptId, "FAILED", modelOutput, "INVALID_PLAN", exception.getMessage());
             throw new IllegalStateException("Project manager returned invalid plan: " + exception.getMessage(), exception);
@@ -237,5 +237,57 @@ public class ProjectManagerPlanningService {
         if (requested.equals("spec") && (text.contains("implement") || text.contains("build") || text.contains("compil"))) return "fullstack";
         if (requested.equals("spec") && (text.contains("test") || text.contains("check") || text.contains("verif"))) return "qa";
         return requested;
+    }
+
+    private DeliveryPlanRequest deliveryPlanRequest(JsonNode plan, List<SprintStepRequest> steps,
+            Map<String, String> proposals, List<BeadsIssue> relevant, UUID directiveRevisionId) {
+        Map<String, BeadsIssue> issues = new HashMap<>();
+        relevant.forEach(issue -> issues.put(issue.id(), issue));
+        List<DeliveryPlanBeadRequest> beadSnapshots = new ArrayList<>();
+        Set<String> resolvedBeadIds = new HashSet<>(proposals.values());
+        steps.forEach(step -> resolvedBeadIds.addAll(step.beadIds()));
+        for (String beadId : resolvedBeadIds) {
+            BeadsIssue issue = issues.get(beadId);
+            if (issue == null) issue = beads.getIssue(beadId);
+            try {
+                beadSnapshots.add(new DeliveryPlanBeadRequest(issue.id(), null, issue.title(), issue.status(),
+                        mapper.writeValueAsString(issue.dependencyIds()), mapper.writeValueAsString(issue.labels()),
+                        mapper.writeValueAsString(issue)));
+            } catch (JsonProcessingException exception) {
+                throw new IllegalArgumentException("Unable to snapshot Bead " + beadId, exception);
+            }
+        }
+        List<DeliveryMilestoneRequest> milestones = new ArrayList<>();
+        JsonNode supplied = plan.path("milestones");
+        if (supplied.isArray()) {
+            int sequence = 1;
+            for (JsonNode milestone : supplied) {
+                String key = milestone.path("milestoneKey").asText("milestone-" + sequence);
+                milestones.add(new DeliveryMilestoneRequest(key, milestone.path("title").asText(key),
+                        milestone.path("outcome").asText("Complete milestone " + key), sequence++));
+            }
+        }
+        if (milestones.isEmpty()) {
+            milestones.add(new DeliveryMilestoneRequest("milestone-1", plan.path("objective").asText(),
+                    steps.stream().map(SprintStepRequest::successCriteria).reduce((left, right) -> left + "; " + right)
+                            .orElse("Complete the planned work"), 1));
+        }
+        String acceptance = steps.stream().map(SprintStepRequest::successCriteria).reduce((left, right) -> left + "\n" + right)
+                .orElse("Complete the DeliveryPlan objective");
+        return new DeliveryPlanRequest(plan.path("objective").asText(), plan.path("reasoning").asText(), acceptance,
+                plan.path("suggestedSprintBoundaries").asText("Generate one bounded sprint at a time from ready Beads"),
+                normalizedPlanSnapshot(plan, proposals), milestones, beadSnapshots, directiveRevisionId);
+    }
+
+    private String normalizedPlanSnapshot(JsonNode plan, Map<String, String> proposals) {
+        JsonNode copy = plan.deepCopy();
+        for (JsonNode step : copy.withArray("steps")) {
+            for (int index = 0; index < step.withArray("beadIds").size(); index++) {
+                JsonNode bead = step.withArray("beadIds").get(index);
+                ((com.fasterxml.jackson.databind.node.ArrayNode) step.withArray("beadIds")).set(index,
+                        mapper.getNodeFactory().textNode(proposals.getOrDefault(bead.asText(), bead.asText())));
+            }
+        }
+        return copy.toString();
     }
 }

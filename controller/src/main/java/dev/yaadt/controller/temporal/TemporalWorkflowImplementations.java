@@ -62,18 +62,30 @@ public final class TemporalWorkflowImplementations {
         private final dev.yaadt.controller.sprint.SprintCommandService commands;
         private final dev.yaadt.controller.sprint.SprintPlanVersionRepository plans;
         private final dev.yaadt.controller.manager.ControllerLeaseService leases;
+        private final dev.yaadt.controller.sprint.SprintRepository sprints;
+        private final dev.yaadt.controller.delivery.DeliveryPlanRepository deliveryPlans;
+        private final dev.yaadt.controller.delivery.DeliveryPlanService deliveryPlanService;
+        private final dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler;
         public Activities(AgentRunService runs, dev.yaadt.controller.manager.ProjectManagerPlanningService planning,
                 dev.yaadt.controller.sprint.SprintCommandService commands, dev.yaadt.controller.sprint.SprintPlanVersionRepository plans,
-                dev.yaadt.controller.manager.ControllerLeaseService leases) {
+                dev.yaadt.controller.manager.ControllerLeaseService leases, dev.yaadt.controller.sprint.SprintRepository sprints,
+                dev.yaadt.controller.delivery.DeliveryPlanRepository deliveryPlans,
+                dev.yaadt.controller.delivery.DeliveryPlanService deliveryPlanService,
+                dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler) {
             this.runs = runs; this.planning = planning; this.commands = commands; this.plans = plans;
-            this.leases = leases;
+            this.leases = leases; this.sprints = sprints; this.deliveryPlans = deliveryPlans;
+            this.deliveryPlanService = deliveryPlanService; this.scheduler = scheduler;
         }
         @Override public String acquireLease(String leaseKey, String ownerId) { return leases.acquire(leaseKey, ownerId); }
         @Override public String heartbeatLease(String leaseKey, String ownerId) { return leases.heartbeat(leaseKey, ownerId); }
         @Override public String releaseLease(String leaseKey, String ownerId) { leases.release(leaseKey, ownerId); return ownerId; }
         @Override public String recordEvent(String ownerId, String eventType) { return eventType; }
         @Override public String executeAgentRun(String runId) { Activity.getExecutionContext().heartbeat("running"); return runs.executeRun(UUID.fromString(runId)).id().toString(); }
-        @Override public String executeSprint(String sprintId) { Activity.getExecutionContext().heartbeat("starting sprint"); return runs.executeSprint(UUID.fromString(sprintId)); }
+        @Override public String executeSprint(String sprintId) {
+            Activity.getExecutionContext().heartbeat("starting sprint");
+            var info = Activity.getExecutionContext().getInfo();
+            return runs.executeSprint(UUID.fromString(sprintId), info.getWorkflowId(), info.getRunId());
+        }
         @Override public String captureCheckpoint(String runId) { return runId; }
         @Override public String generateProjectPlan(String projectId) {
             UUID id = UUID.fromString(projectId);
@@ -86,9 +98,20 @@ public final class TemporalWorkflowImplementations {
         }
         @Override public String approveAndExecuteSprint(String sprintId) {
             UUID id = UUID.fromString(sprintId);
-            int version = plans.findTopBySprintIdOrderByVersionDesc(id).orElseThrow().getVersion();
-            commands.command(id, "approve", new dev.yaadt.controller.sprint.SprintCommandRequest(version, "project manager approval"), "project-manager", "Project Manager", null);
-            return runs.executeSprint(id);
+            var deliveryPlan = deliveryPlans.findById(id).orElse(null);
+            if (deliveryPlan != null) {
+                if (!"DRAFT".equals(deliveryPlan.getState())) {
+                    throw new IllegalStateException("DeliveryPlan is not awaiting approval: " + deliveryPlan.getState());
+                }
+                deliveryPlanService.submit(deliveryPlan.getId());
+                deliveryPlanService.approve(deliveryPlan.getId(),
+                        new dev.yaadt.controller.delivery.DeliveryPlanDecisionRequest(deliveryPlan.getCurrentVersion(), "Project Manager approval"),
+                        "project-manager");
+                var generated = scheduler.generateNextSprint(deliveryPlan.getId(), "project-manager", "Project Manager");
+                var info = Activity.getExecutionContext().getInfo();
+                return runs.executeSprint(generated.id(), info.getWorkflowId(), info.getRunId());
+            }
+            throw new IllegalStateException("DeliveryPlan not found: " + id);
         }
         @Override public String applySprintCommand(String commandId) { return commands.apply(UUID.fromString(commandId)).status(); }
     }

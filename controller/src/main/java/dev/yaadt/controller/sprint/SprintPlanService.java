@@ -9,6 +9,7 @@ import dev.yaadt.controller.audit.AuditEvent;
 import dev.yaadt.controller.audit.AuditEventRepository;
 import dev.yaadt.controller.beads.BeadsClient;
 import dev.yaadt.controller.beads.BeadsIssue;
+import dev.yaadt.controller.beads.BeadsStatus;
 import dev.yaadt.controller.beads.BeadsProjectLabels;
 import dev.yaadt.controller.project.ProjectRepository;
 import java.time.Clock;
@@ -142,12 +143,16 @@ public class SprintPlanService {
     }
     private void validate(UUID projectId, SprintPlanRequest request) {
         if (!directives.existsById(request.directiveRevisionId())) invalid("Directive revision not found");
+        Set<String> referencedBeads = new HashSet<>();
         for (SprintStepRequest step : request.steps()) {
             if (!profiles.existsById(step.agentProfileVersionId())) invalid("Agent profile version not found");
             if (!repositories.findAllById(step.repositoryIds()).stream().map(r -> r.getId()).collect(java.util.stream.Collectors.toSet())
                     .containsAll(step.repositoryIds())) invalid("Repository reference not found");
             if (new HashSet<>(step.resourceLocks()).size() != step.resourceLocks().size()) {
                 invalid("Duplicate resource lock in step: " + step.stepKey());
+            }
+            for (String beadId : step.beadIds()) {
+                if (!referencedBeads.add(beadId)) invalid("Bead is referenced by multiple steps: " + beadId);
             }
         }
         try {
@@ -163,7 +168,7 @@ public class SprintPlanService {
             for (String beadId : step.beadIds()) {
                 BeadsIssue issue = relevant.get(beadId);
                 if (issue == null) invalid("Bead is not in the project scope: " + beadId);
-                if (Set.of("closed", "completed", "cancelled", "canceled", "done").contains(issue.status().toLowerCase())) {
+                if (BeadsStatus.isTerminal(issue.status())) {
                     invalid("Bead is terminal: " + beadId);
                 }
             }

@@ -6,14 +6,14 @@ import java.util.UUID;
 
 public record AgentRunRequest(String idempotencyKey, UUID stepId, int attemptNumber,
         String workspaceId, String promptReference, Map<String, String> environment, AgentBackendConfig backend,
-        List<String> beadIds, String buildCommands, String testCommands) {
+        List<String> beadIds, String buildCommands, String testCommands, int maxSteps, int timeoutSeconds) {
     public AgentRunRequest(String idempotencyKey, UUID stepId, int attemptNumber,
             String workspaceId, String promptReference, Map<String, String> environment) {
-        this(idempotencyKey, stepId, attemptNumber, workspaceId, promptReference, environment, null, List.of(), "", "");
+        this(idempotencyKey, stepId, attemptNumber, workspaceId, promptReference, environment, null, List.of(), "", "", 100, 1800);
     }
     public AgentRunRequest(String idempotencyKey, UUID stepId, int attemptNumber,
             String workspaceId, String promptReference, Map<String, String> environment, AgentBackendConfig backend) {
-        this(idempotencyKey, stepId, attemptNumber, workspaceId, promptReference, environment, backend, List.of(), "", "");
+        this(idempotencyKey, stepId, attemptNumber, workspaceId, promptReference, environment, backend, List.of(), "", "", 100, 1800);
     }
     public AgentRunRequest {
         environment = environment == null ? Map.of() : Map.copyOf(environment);

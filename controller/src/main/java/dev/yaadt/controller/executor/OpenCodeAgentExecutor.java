@@ -32,11 +32,14 @@ public class OpenCodeAgentExecutor implements AgentExecutor {
         try {
             AgentBackendConfig backend = request.backend();
             Map<String, Object> values = new java.util.HashMap<>();
+            values.put("idempotencyKey", request.idempotencyKey());
             values.put("prompt", request.promptReference());
             values.put("cwd", request.workspaceId());
             values.put("beadIds", request.beadIds());
             values.put("buildCommands", request.buildCommands());
             values.put("testCommands", request.testCommands());
+            values.put("maxSteps", request.maxSteps());
+            values.put("timeoutSeconds", request.timeoutSeconds());
             if (backend != null) {
                 values.put("providerIdentifier", backend.providerIdentifier());
                 values.put("modelIdentifier", backend.modelIdentifier());
@@ -45,11 +48,11 @@ public class OpenCodeAgentExecutor implements AgentExecutor {
             }
             String body = mapper.writeValueAsString(values);
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(runnerUrl + "/run"))
-                    .timeout(Duration.ofMinutes(20)).header("Authorization", "Bearer " + token)
+                    .timeout(Duration.ofSeconds(request.timeoutSeconds())).header("Authorization", "Bearer " + token)
                     .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
             HttpResponse<String> response = client.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                return new AgentRunResult(request.idempotencyKey(), AgentRunResult.State.FAILED, null,
+                return new AgentRunResult(request.idempotencyKey(), AgentRunResult.State.UNKNOWN, null,
                         "RUNNER_HTTP_" + response.statusCode(), response.body(), List.of());
             }
             Map<String, Object> result = mapper.readValue(response.body(), new TypeReference<>() { });
@@ -57,12 +60,16 @@ public class OpenCodeAgentExecutor implements AgentExecutor {
                     .map(event -> new AgentRunEvent(eventsIndex(event), String.valueOf(event.get("eventType")),
                             String.valueOf(event.getOrDefault("payload", "")), Boolean.TRUE.equals(event.get("redacted")),
                             java.time.Instant.parse(String.valueOf(event.get("createdAt"))))).toList();
-            AgentRunResult.State state = "SUCCEEDED".equals(result.get("state"))
-                    ? AgentRunResult.State.SUCCEEDED : AgentRunResult.State.FAILED;
+            AgentRunResult.State state = switch (String.valueOf(result.get("state"))) {
+                case "SUCCEEDED" -> AgentRunResult.State.SUCCEEDED;
+                case "TIMED_OUT" -> AgentRunResult.State.TIMED_OUT;
+                case "UNKNOWN" -> AgentRunResult.State.UNKNOWN;
+                default -> AgentRunResult.State.FAILED;
+            };
             return new AgentRunResult(request.idempotencyKey(), state, (String) result.get("commitSha"),
                     (String) result.get("errorCode"), (String) result.get("errorMessage"), events);
         } catch (Exception exception) {
-            return new AgentRunResult(request.idempotencyKey(), AgentRunResult.State.FAILED, null,
+            return new AgentRunResult(request.idempotencyKey(), AgentRunResult.State.UNKNOWN, null,
                     "RUNNER_UNAVAILABLE", exception.getMessage(), List.of());
         }
     }

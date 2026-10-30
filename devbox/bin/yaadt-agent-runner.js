@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const {spawn, execFileSync} = require('child_process');
 
 const port = Number(process.env.YAADT_AGENT_RUNNER_PORT || 3010);
@@ -10,17 +11,53 @@ const timeoutMs = Number(process.env.YAADT_AGENT_RUNNER_TIMEOUT_MS || 1800000);
 const opencodeBin = process.env.YAADT_OPENCODE_BIN || '/opt/opencode/node_modules/.bin/opencode';
 const maxConcurrentRuns = Number(process.env.YAADT_AGENT_RUNNER_MAX_CONCURRENT || 2);
 let activeRuns = 0;
+const inFlightRuns = new Map();
 
 function response(res, status, body) {
   res.writeHead(status, {'content-type': 'application/json'});
   res.end(JSON.stringify(body));
 }
 
+function redact(value, secrets) {
+  let result = String(value || '');
+  for (const secret of secrets) {
+    if (secret) result = result.split(String(secret)).join('[REDACTED]');
+  }
+  return result;
+}
+
+function cachePath(body) {
+  if (!body.idempotencyKey) return null;
+  const cwd = path.resolve(body.cwd || '/workspace');
+  const key = crypto.createHash('sha256').update(String(body.idempotencyKey)).digest('hex');
+  return path.join(cwd, '.yaadt-agent-runs', `${key}.json`);
+}
+
+function cachedResult(body) {
+  const file = cachePath(body);
+  if (!file) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error(`unable to read cached run: ${error.message}`);
+    return null;
+  }
+}
+
+function saveCachedResult(body, result) {
+  const file = cachePath(body);
+  if (!file) return;
+  fs.mkdirSync(path.dirname(file), {recursive: true});
+  const temporary = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(result), {mode: 0o600});
+  fs.renameSync(temporary, file);
+}
+
 function checkpoint(cwd) {
   try {
     execFileSync('git', ['config', 'user.name', process.env.GIT_AUTHOR_NAME || 'YAADT Agent'], {cwd});
     execFileSync('git', ['config', 'user.email', process.env.GIT_AUTHOR_EMAIL || 'yaadt-agent@local'], {cwd});
-    execFileSync('git', ['add', '-A'], {cwd});
+     execFileSync('git', ['add', '-A', '--', '.', ':(exclude).yaadt-agent-runs'], {cwd});
     try {
       execFileSync('git', ['commit', '-m', 'YAADT agent checkpoint'], {cwd, encoding: 'utf8'});
     } catch (commitError) {
@@ -66,6 +103,19 @@ function runTool(command, args, cwd) {
 }
 
 function run(body) {
+  const cached = cachedResult(body);
+  if (cached) return Promise.resolve(cached);
+  const key = body.idempotencyKey ? String(body.idempotencyKey) : null;
+  if (key && inFlightRuns.has(key)) return inFlightRuns.get(key);
+  const execution = executeRun(body);
+  if (key) {
+    inFlightRuns.set(key, execution);
+    execution.then(() => inFlightRuns.delete(key), () => inFlightRuns.delete(key));
+  }
+  return execution;
+}
+
+function executeRun(body) {
   activeRuns++;
   return new Promise((resolve) => {
     const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'yaadt-opencode-'));
@@ -85,6 +135,7 @@ function run(body) {
         models: {[model]: {name: model}}}},
       model: `${provider}/${model}`
     };
+    const secrets = [body.apiKey, process.env.LLM_API_KEY].filter(Boolean);
     fs.writeFileSync(configPath, JSON.stringify(config));
     console.log(`run started cwd=${cwd} model=${provider}/${model}`);
     const child = spawn(opencodeBin, ['run', '--format', 'json', body.prompt], {
@@ -96,7 +147,7 @@ function run(body) {
     let output = '';
     const started = new Date().toISOString();
     const collect = (type, data) => {
-      const text = data.toString().trim();
+      const text = redact(data.toString().trim(), secrets);
       if (!text) return;
       output += `${text}\n`;
       events.push({eventType: type, payload: text, redacted: true, createdAt: new Date().toISOString()});
@@ -104,7 +155,8 @@ function run(body) {
     child.stdout.on('data', data => collect('OPENCODE', data));
     child.stderr.on('data', data => collect('STDERR', data));
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, timeoutMs);
+    const runTimeoutMs = Number(body.timeoutSeconds || 0) > 0 ? Number(body.timeoutSeconds) * 1000 : timeoutMs;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); }, runTimeoutMs);
     let settled = false;
     const finish = (code, signal, error) => {
       if (settled) return;
@@ -124,7 +176,7 @@ function run(body) {
         for (const [label, command] of [['BUILD', body.buildCommands], ['TEST', body.testCommands]]) {
           const result = validateCommand(command, cwd, label);
           validationResults.push(`${label}=${result.ok ? 'PASSED' : 'FAILED'}`);
-          events.push({eventType: `VALIDATION_${label}`, payload: result.output || `${label} passed`, redacted: true, createdAt: new Date().toISOString()});
+           events.push({eventType: `VALIDATION_${label}`, payload: redact(result.output || `${label} passed`, secrets), redacted: true, createdAt: new Date().toISOString()});
           if (!result.ok) validationFailed = true;
         }
       }
@@ -134,13 +186,15 @@ function run(body) {
         events.push({eventType: result.ok ? 'BEADS_HANDOFF' : 'RUN_ERROR', payload: result.ok ? `beads=${body.beadIds.join(',')}` : result.error, redacted: true, createdAt: new Date().toISOString()});
         if (!result.ok) { validationFailed = true; state = 'FAILED'; }
       }
-      if (error) events.push({eventType: 'RUN_ERROR', payload: error.message, redacted: true, createdAt: new Date().toISOString()});
-      if (timedOut) events.push({eventType: 'RUN_ERROR', payload: `runner timeout after ${timeoutMs}ms`, redacted: true, createdAt: new Date().toISOString()});
+       if (error) events.push({eventType: 'RUN_ERROR', payload: redact(error.message, secrets), redacted: true, createdAt: new Date().toISOString()});
+       if (timedOut) events.push({eventType: 'RUN_ERROR', payload: `runner timeout after ${runTimeoutMs}ms`, redacted: true, createdAt: new Date().toISOString()});
       events.push({eventType: state === 'SUCCEEDED' ? 'RUN_COMPLETED' : 'RUN_FAILED', payload: `exit=${code} signal=${signal || 'none'}`, redacted: true, createdAt: new Date().toISOString()});
       events.forEach((event, index) => { event.sequenceNumber = index + 1; });
-      resolve({state, commitSha,
-        errorCode: state === 'SUCCEEDED' ? null : (timedOut ? 'RUN_TIMEOUT' : (error ? 'OPENCODE_UNAVAILABLE' : 'OPENCODE_FAILED')),
-        errorMessage: state === 'SUCCEEDED' ? null : (error ? error.message : (output.slice(-4000) || `terminated by ${signal || 'unknown signal'}`)), events});
+       const result = {state, commitSha,
+         errorCode: state === 'SUCCEEDED' ? null : (timedOut ? 'RUN_TIMEOUT' : (error ? 'OPENCODE_UNAVAILABLE' : 'OPENCODE_FAILED')),
+         errorMessage: state === 'SUCCEEDED' ? null : (error ? redact(error.message, secrets) : (redact(output.slice(-4000), secrets) || `terminated by ${signal || 'unknown signal'}`)), events};
+       saveCachedResult(body, result);
+       resolve(result);
       console.log(`run finished state=${state} exit=${code} signal=${signal || 'none'}`);
     };
     child.on('error', error => finish(-1, null, error));

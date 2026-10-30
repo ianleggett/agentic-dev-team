@@ -4,4 +4,5 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 public interface SprintRepository extends JpaRepository<Sprint, UUID> {
     List<Sprint> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
+    List<Sprint> findByDeliveryPlanIdOrderByCreatedAtDesc(UUID deliveryPlanId);
 }

@@ -19,6 +19,9 @@ public class AgentRun {
     @Column(nullable = false, length = 40) private String state;
     @Column(name = "executor_id") private String executorId;
     @Column(name = "workspace_id", nullable = false) private String workspaceId;
+    @Column(name = "temporal_workflow_id", length = 240) private String temporalWorkflowId;
+    @Column(name = "temporal_run_id", length = 240) private String temporalRunId;
+    @Column(name = "state_version", nullable = false) private long stateVersion;
     @Column(name = "started_at") private Instant startedAt;
     @Column(name = "heartbeat_at") private Instant heartbeatAt;
     @Column(name = "finished_at") private Instant finishedAt;
@@ -32,11 +35,22 @@ public class AgentRun {
         this.stepId = stepId; this.attemptNumber = attemptNumber; this.idempotencyKey = idempotencyKey;
         this.state = "CREATED"; this.workspaceId = workspaceId; this.createdAt = now;
     }
-    public void start(Instant now) { state = "RUNNING"; startedAt = now; heartbeatAt = now; }
+    public void start(Instant now) { state = "RUNNING"; stateVersion++; startedAt = now; heartbeatAt = now; }
     public void finish(AgentRunResult result, Instant now) {
-        state = switch (result.state()) { case SUCCEEDED -> "SUCCEEDED"; case FAILED -> "FAILED"; case TIMED_OUT -> "TIMED_OUT"; };
-        finishedAt = now; errorCode = result.errorCode(); errorMessage = result.errorMessage();
+        state = switch (result.state()) {
+            case SUCCEEDED -> "SUCCEEDED";
+            case FAILED -> "FAILED";
+            case TIMED_OUT -> "TIMED_OUT";
+            case UNKNOWN -> "UNKNOWN";
+        };
+        stateVersion++; finishedAt = now; errorCode = result.errorCode(); errorMessage = result.errorMessage();
         checkpointSha = result.commitSha();
+    }
+    public void bindTemporalExecution(String workflowId, String runId) {
+        this.temporalWorkflowId = workflowId; this.temporalRunId = runId;
+    }
+    public void markUnknown(String reason, Instant now) {
+        state = "UNKNOWN"; stateVersion++; finishedAt = now; errorCode = "UNKNOWN_OUTCOME"; errorMessage = reason;
     }
     public UUID getId() { return id; }
     public UUID getStepId() { return stepId; }
@@ -45,6 +59,9 @@ public class AgentRun {
     public String getState() { return state; }
     public String getExecutorId() { return executorId; }
     public String getWorkspaceId() { return workspaceId; }
+    public String getTemporalWorkflowId() { return temporalWorkflowId; }
+    public String getTemporalRunId() { return temporalRunId; }
+    public long getStateVersion() { return stateVersion; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getHeartbeatAt() { return heartbeatAt; }
     public Instant getFinishedAt() { return finishedAt; }

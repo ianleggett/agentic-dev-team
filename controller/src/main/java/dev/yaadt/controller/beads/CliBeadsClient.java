@@ -18,6 +18,7 @@ public class CliBeadsClient implements BeadsClient {
 
     private final ObjectMapper objectMapper;
     private final BeadsProperties properties;
+    private volatile BeadsCapabilities detectedCapabilities;
 
     public CliBeadsClient(ObjectMapper objectMapper, BeadsProperties properties) {
         this.objectMapper = objectMapper;
@@ -26,7 +27,7 @@ public class CliBeadsClient implements BeadsClient {
 
     @Override
     public List<BeadsIssue> listRelevantIssues(String projectLabel) {
-        JsonNode root = execute(List.of("list", "--json"));
+        JsonNode root = execute(List.of("list", "--all", "--json"));
         List<BeadsIssue> issues = new ArrayList<>();
         for (JsonNode node : array(root)) {
             BeadsIssue issue = parseIssue(node);
@@ -52,7 +53,22 @@ public class CliBeadsClient implements BeadsClient {
 
     @Override
     public void claimIssue(String issueId) {
+        String assignee = currentAssignee(issueId);
+        if (properties.getActor().equals(assignee)) return;
+        if (!assignee.isBlank()) {
+            throw new BeadsCommandException("Refusing to claim Beads issue owned by " + assignee);
+        }
         execute(List.of("update", issueId, "--claim", "--json"));
+    }
+
+    @Override
+    public void releaseClaim(String issueId) {
+        String assignee = currentAssignee(issueId);
+        if (!assignee.isBlank() && !assignee.equals(properties.getActor())) {
+            throw new BeadsCommandException("Refusing to release Beads issue claimed by " + assignee);
+        }
+        if (assignee.isBlank()) return;
+        execute(List.of("update", issueId, "--assignee", "", "--json"));
     }
 
     @Override
@@ -65,7 +81,48 @@ public class CliBeadsClient implements BeadsClient {
         execute(List.of("comment", issueId, comment));
     }
 
+    @Override
+    public void addCommentIfAbsent(String issueId, String comment) {
+        JsonNode comments = execute(List.of("comments", issueId, "--json"));
+        for (JsonNode existing : array(comments)) {
+            if (comment.equals(existing.path("text").asText())) return;
+        }
+        addComment(issueId, comment);
+    }
+
+    @Override
+    public BeadsCapabilities capabilities() {
+        BeadsCapabilities current = detectedCapabilities;
+        if (current != null && current.available()) return current;
+        synchronized (this) {
+            if (detectedCapabilities == null || !detectedCapabilities.available()) {
+                BeadsCapabilities detected = detectCapabilities();
+                if (detected.available()) detectedCapabilities = detected;
+                else return detected;
+            }
+            return detectedCapabilities;
+        }
+    }
+
+    protected BeadsCapabilities detectCapabilities() {
+        try {
+            String version = executeText(List.of("--version")).trim();
+            String listHelp = executeText(List.of("help", "list")).toLowerCase(java.util.Locale.ROOT);
+            String updateHelp = executeText(List.of("help", "update")).toLowerCase(java.util.Locale.ROOT);
+            return new BeadsCapabilities(true, version, listHelp.contains("--json"),
+                    updateHelp.contains("--claim"), "");
+        } catch (BeadsCommandException exception) {
+            return BeadsCapabilities.unavailable(exception.getMessage());
+        }
+    }
+
     protected JsonNode execute(List<String> arguments) {
+        String output = executeText(arguments);
+        if (arguments.get(arguments.size() - 1).equals("--json")) return parseJson(output);
+        return objectMapper.createObjectNode();
+    }
+
+    protected String executeText(List<String> arguments) {
         List<String> command = new ArrayList<>();
         command.add(properties.getCommand());
         command.addAll(arguments);
@@ -88,10 +145,7 @@ public class CliBeadsClient implements BeadsClient {
             if (process.exitValue() != 0) {
                 throw new BeadsCommandException("Beads command failed (" + process.exitValue() + "): " + error);
             }
-            if (arguments.get(arguments.size() - 1).equals("--json")) {
-                return parseJson(output);
-            }
-            return objectMapper.createObjectNode();
+            return output;
         } catch (IOException e) {
             throw new BeadsCommandException("Unable to execute Beads command: " + e.getMessage());
         } catch (InterruptedException e) {
@@ -131,6 +185,11 @@ public class CliBeadsClient implements BeadsClient {
                 node.path("status").asText(),
                 List.copyOf(labels),
                 List.copyOf(dependencyIds));
+    }
+
+    private String currentAssignee(String issueId) {
+        JsonNode issue = first(execute(List.of("show", issueId, "--json")));
+        return issue.path("assignee").asText("");
     }
 
     private JsonNode first(JsonNode root) {

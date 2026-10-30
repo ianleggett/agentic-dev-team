@@ -29,11 +29,16 @@ public class TemporalWorkerConfiguration {
             dev.yaadt.controller.manager.ProjectManagerPlanningService planning,
             dev.yaadt.controller.manager.ControllerLeaseService leases,
             dev.yaadt.controller.sprint.SprintCommandService commands,
-            dev.yaadt.controller.sprint.SprintPlanVersionRepository plans) {
+            dev.yaadt.controller.sprint.SprintPlanVersionRepository plans,
+            dev.yaadt.controller.sprint.SprintRepository sprints,
+            dev.yaadt.controller.delivery.DeliveryPlanRepository deliveryPlans,
+            dev.yaadt.controller.delivery.DeliveryPlanService deliveryPlanService,
+            dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler) {
         WorkerFactory factory = WorkerFactory.newInstance(client);
         Worker worker = factory.newWorker(properties.taskQueue());
         worker.registerWorkflowImplementationTypes(TemporalWorkflowImplementations.ProjectManager.class, TemporalWorkflowImplementations.Sprint.class);
-        worker.registerActivitiesImplementations(new TemporalWorkflowImplementations.Activities(runs, planning, commands, plans, leases));
+        worker.registerActivitiesImplementations(new TemporalWorkflowImplementations.Activities(runs, planning, commands, plans, leases,
+                sprints, deliveryPlans, deliveryPlanService, scheduler));
         return factory;
     }
 }

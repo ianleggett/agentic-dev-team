@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 @Entity
@@ -112,7 +114,16 @@ public class Repository {
     /** Resolve the dashboard's root shortcut without colliding with shared workspace state. */
     public String effectiveWorkspacePath() {
         if (!".".equals(relativeWorkspacePath)) {
-            return relativeWorkspacePath;
+            try {
+                Path path = Paths.get(relativeWorkspacePath).normalize();
+                if (!path.isAbsolute() && !path.startsWith("..") && path.getNameCount() > 0
+                        && path.toString().equals(relativeWorkspacePath)
+                        && path.toString().indexOf('\\') < 0) {
+                    return path.toString();
+                }
+            } catch (RuntimeException ignored) {
+                // Fall back to a sanitized repository name for legacy invalid data.
+            }
         }
         String fallback = name == null ? "" : name.trim().replaceAll("[^A-Za-z0-9._-]+", "-");
         return fallback.isBlank() ? "repository-" + id : fallback;

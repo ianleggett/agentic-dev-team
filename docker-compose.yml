@@ -75,6 +75,7 @@ services:
       context: ./controller
     container_name: yaadt-controller-api
     restart: unless-stopped
+    user: "${USER_UID:-1000}:${USER_GID:-1000}"
     depends_on:
       postgres-controller:
         condition: service_healthy
@@ -142,11 +143,8 @@ services:
       YAADT_AGENT_RUNNER_TOKEN: ${YAADT_AGENT_RUNNER_TOKEN:-change-me-local-runner-token}
       LLM_API_KEY: ${LLM_API_KEY:-}
       OPENCODE_DISABLE_TELEMETRY: "1"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./workspace:/workspace
-      - ${YAADT_SSH_DIRECTORY:-./.secrets/ssh}:/run/yaadt/ssh:ro
     command: ["node", "/usr/local/bin/yaadt-agent-runner.js"]
     networks:
       - beads-net

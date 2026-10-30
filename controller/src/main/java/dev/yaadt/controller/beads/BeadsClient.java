@@ -12,9 +12,23 @@ public interface BeadsClient {
 
     void claimIssue(String issueId);
 
+    void releaseClaim(String issueId);
+
     void closeIssue(String issueId, String reason);
 
+    default void closeIssueIfOpen(String issueId, String reason) {
+        BeadsIssue issue = getIssue(issueId);
+        if (BeadsStatus.isTerminal(issue.status())) return;
+        closeIssue(issueId, reason);
+    }
+
     void addComment(String issueId, String comment);
+
+    default void addCommentIfAbsent(String issueId, String comment) {
+        addComment(issueId, comment);
+    }
+
+    BeadsCapabilities capabilities();
 
     record CreateBeadsIssue(String title, String description, List<String> labels) {
     }
