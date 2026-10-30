@@ -29,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import dev.yaadt.controller.delivery.DeliveryPlanSchedulerService;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,6 +48,7 @@ class AgentRunServiceTest {
     @Mock ProjectRepository projects;
     @Mock BeadsClient beads;
     @Mock BeadsMutationOutboxRepository beadMutations;
+    @Mock DeliveryPlanSchedulerService deliveryPlans;
 
     private AgentRunService service;
     private final UUID stepId = UUID.randomUUID();
@@ -55,7 +57,7 @@ class AgentRunServiceTest {
     @BeforeEach
     void setUp() {
         service = new AgentRunService(runs, events, executor, plans, steps, profiles, profileDefinitions,
-                sprints, narrative, repositories, Clock.fixed(now, ZoneOffset.UTC), leases, projects, beads, beadMutations);
+                sprints, narrative, repositories, Clock.fixed(now, ZoneOffset.UTC), leases, projects, beads, beadMutations, deliveryPlans);
     }
 
     @Test

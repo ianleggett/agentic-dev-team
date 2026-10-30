@@ -20,10 +20,11 @@ public class DeliveryPlanController {
     private final DeliveryPlanService service;
     private final DeliveryPlanSprintQueryService sprintQuery;
     private final DeliveryPlanBeadLiveQueryService liveBeadQuery;
+    private final DeliveryPlanSchedulerService scheduler;
 
     public DeliveryPlanController(DeliveryPlanService service, DeliveryPlanSprintQueryService sprintQuery,
-            DeliveryPlanBeadLiveQueryService liveBeadQuery) {
-        this.service = service; this.sprintQuery = sprintQuery; this.liveBeadQuery = liveBeadQuery;
+            DeliveryPlanBeadLiveQueryService liveBeadQuery, DeliveryPlanSchedulerService scheduler) {
+        this.service = service; this.sprintQuery = sprintQuery; this.liveBeadQuery = liveBeadQuery; this.scheduler = scheduler;
     }
 
     @GetMapping("/projects/{projectId}/delivery-plans")
@@ -61,7 +62,9 @@ public class DeliveryPlanController {
     @PostMapping("/delivery-plans/{planId}/approve")
     public DeliveryPlanResponse approve(@PathVariable UUID planId, @Valid @RequestBody DeliveryPlanDecisionRequest request,
             @RequestHeader(value = "X-User-Subject", defaultValue = "local-user") String subject) {
-        return service.approve(planId, request, subject);
+        DeliveryPlanResponse response = service.approve(planId, request, subject);
+        scheduler.generateNextSprintIfAvailable(planId, subject, subject);
+        return response;
     }
 
     @PostMapping("/delivery-plans/{planId}/reject")

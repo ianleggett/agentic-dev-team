@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,6 +120,15 @@ public class DeliveryPlanSchedulerService {
             throw exception;
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Invalid DeliveryPlan snapshot", exception);
+        }
+    }
+
+    public Optional<SprintResponse> generateNextSprintIfAvailable(UUID planId, String subject, String displayName) {
+        try {
+            return Optional.of(generateNextSprint(planId, subject, displayName));
+        } catch (RuntimeException exception) {
+            // Automatic replenishment must not make approval or completed execution fail.
+            return Optional.empty();
         }
     }
 

@@ -28,6 +28,7 @@ import dev.yaadt.controller.beads.BeadsStatus;
 import dev.yaadt.controller.beads.BeadsMutationOutbox;
 import dev.yaadt.controller.beads.BeadsMutationOutboxRepository;
 import dev.yaadt.controller.project.ProjectRepository;
+import dev.yaadt.controller.delivery.DeliveryPlanSchedulerService;
 
 @Service
 @Transactional
@@ -48,16 +49,17 @@ public class AgentRunService {
     private final ProjectRepository projects;
     private final BeadsClient beads;
     private final BeadsMutationOutboxRepository beadMutations;
+    private final DeliveryPlanSchedulerService deliveryPlans;
 
     public AgentRunService(AgentRunRepository runs, RunEventRepository events, AgentExecutor executor,
             SprintPlanVersionRepository plans, SprintStepRepository steps, AgentProfileVersionRepository profiles,
             AgentProfileRepository profileDefinitions, SprintRepository sprints, SprintNarrativeService narrative, RepositoryRepository repositories, Clock clock,
             ControllerLeaseService leases, ProjectRepository projects, BeadsClient beads,
-            BeadsMutationOutboxRepository beadMutations) {
+            BeadsMutationOutboxRepository beadMutations, DeliveryPlanSchedulerService deliveryPlans) {
         this.runs = runs; this.events = events; this.executor = executor; this.plans = plans; this.steps = steps;
         this.profiles = profiles; this.sprints = sprints; this.narrative = narrative; this.repositories = repositories; this.clock = clock;
         this.profileDefinitions = profileDefinitions; this.mapper = new ObjectMapper(); this.leases = leases;
-        this.projects = projects; this.beads = beads; this.beadMutations = beadMutations;
+        this.projects = projects; this.beads = beads; this.beadMutations = beadMutations; this.deliveryPlans = deliveryPlans;
     }
 
     public AgentRunResponse execute(UUID stepId) {
@@ -211,6 +213,11 @@ public class AgentRunService {
             completeBeads(sprintId, sprintBeadIds);
             sprints.findById(sprintId).ifPresent(sprint -> sprint.transition("COMPLETED", Instant.now(clock)));
             event(sprintId, "execution-completed", "COMPLETED", "steps=" + completed);
+            sprints.findById(sprintId).ifPresent(sprint -> {
+                if (sprint.getDeliveryPlanId() != null) {
+                    deliveryPlans.generateNextSprintIfAvailable(sprint.getDeliveryPlanId(), "scheduler", "Delivery Plan Scheduler");
+                }
+            });
             return "EXECUTED_STEPS=" + completed;
         } catch (RuntimeException failure) {
             sprints.findById(sprintId).ifPresent(sprint -> {
