@@ -177,6 +177,7 @@ RUN echo "============================================================" && \
 #   MODERATE qs               GHSA-4mjr-xmp4-gh2g (<6.16.0)
 #   MODERATE vitest /
 #            @vitest/mocker   GHSA-82fw-gwwq-j7x9 (<4.1.11)
+#   HIGH     body-parser GHSA-qwcr-r2fm-qrc7 (<2.2.1)
 #   CRITICAL proxy-addr and LOW dompurify advisories reported by the
 #            current upstream lockfile
 #
@@ -189,11 +190,11 @@ RUN set -eu; \
     echo " Updating vulnerable transitive dependencies"; \
     echo " (scoped, within declared semver ranges)"; \
     echo "============================================================"; \
-    npm ls brace-expansion js-yaml qs @humanfs/node vitest dompurify proxy-addr \
+    npm ls brace-expansion body-parser js-yaml qs @humanfs/node vitest dompurify proxy-addr \
         > /opt/beads-ui/security-reports/dep-versions-before.log 2>&1 || true; \
-    npm update brace-expansion js-yaml qs @humanfs/node vitest dompurify proxy-addr \
+    npm update brace-expansion body-parser js-yaml qs @humanfs/node vitest dompurify proxy-addr \
         --ignore-scripts --no-audit --no-fund; \
-    npm ls brace-expansion js-yaml qs @humanfs/node vitest dompurify proxy-addr \
+    npm ls brace-expansion body-parser js-yaml qs @humanfs/node vitest dompurify proxy-addr \
         > /opt/beads-ui/security-reports/dep-versions-after.log 2>&1 || true; \
     echo ""; \
     echo "Version changes:"; \
