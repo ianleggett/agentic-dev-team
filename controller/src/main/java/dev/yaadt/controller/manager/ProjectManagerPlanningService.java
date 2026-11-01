@@ -23,6 +23,8 @@ import dev.yaadt.controller.delivery.DeliveryMilestoneRequest;
 import dev.yaadt.controller.delivery.DeliveryPlanBeadRequest;
 import dev.yaadt.controller.delivery.DeliveryPlanRequest;
 import dev.yaadt.controller.delivery.DeliveryPlanService;
+import dev.yaadt.controller.delivery.DeliveryPlanRepository;
+import dev.yaadt.controller.delivery.DeliveryPlanReconciliationService;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,18 +53,23 @@ public class ProjectManagerPlanningService {
     private final ProjectManagerPlanningAttemptService attempts;
     private final CurrentUserService users;
     private final DeliveryPlanService deliveryPlans;
+    private final DeliveryPlanRepository planRepository;
+    private final DeliveryPlanReconciliationService reconciliation;
 
     public ProjectManagerPlanningService(ProjectRepository projects, RepositoryRepository repositories,
             DirectiveRepository directives, AgentProfileRepository profiles, AgentProfileVersionRepository versions,
             ProjectManagerRepository assignments, AgentExecutor executor, ObjectMapper mapper,
             SprintNarrativeService narrative, Clock clock, BeadsClient beads, ProjectManagerPlanningAttemptService attempts,
-            CurrentUserService users, DeliveryPlanService deliveryPlans) {
+            CurrentUserService users, DeliveryPlanService deliveryPlans, DeliveryPlanRepository planRepository,
+            DeliveryPlanReconciliationService reconciliation) {
         this.projects = projects; this.repositories = repositories; this.directives = directives; this.profiles = profiles;
         this.assignments = assignments;
         this.versions = versions; this.executor = executor; this.mapper = mapper;
         this.narrative = narrative; this.clock = clock; this.beads = beads; this.attempts = attempts;
         this.users = users;
         this.deliveryPlans = deliveryPlans;
+        this.planRepository = planRepository;
+        this.reconciliation = reconciliation;
     }
 
     @Transactional
@@ -84,22 +91,26 @@ public class ProjectManagerPlanningService {
             managerVersion = versions.findTopByProfileIdOrderByVersionDesc(manager.getId())
                     .orElseThrow(() -> new IllegalArgumentException("Project manager profile version not found"));
         }
-        String projectLabel = BeadsProjectLabels.forProject(project.getBeadsProject());
+        String projectLabel = BeadsProjectLabels.forProject(project.getName());
         List<BeadsIssue> relevantBeads = beads.listRelevantIssues(projectLabel);
         String beadsContext = relevantBeads.stream()
                 .map(issue -> "id=" + issue.id() + " status=" + issue.status() + " labels=" + issue.labels()
                         + " dependsOn=" + issue.dependencyIds() + " title=" + issue.title() + " description=" + issue.description())
                 .reduce("", (a, b) -> a + b + "\n");
-        String sprintObjective = assignments.findByProjectId(projectId).map(ProjectManager::getPlanningObjective).orElse("");
-        if (sprintObjective == null || sprintObjective.isBlank()) throw new IllegalArgumentException("sprint objective is blank");
+        var currentPlan = planRepository.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
+                .filter(candidate -> "APPROVED".equals(candidate.getState())).findFirst().orElse(null);
+        String sprintObjective = resolveSprintObjective(assignments.findByProjectId(projectId).map(ProjectManager::getPlanningObjective).orElse(""),
+                currentPlan == null ? "" : currentPlan.getObjective(), directive.getContent(), project.getObjective());
         String context = "PROJECT\nname=" + project.getName() + " sprintObjective=" + sprintObjective + " beadsProject=" + project.getBeadsProject()
                 + " beadsProjectLabel=" + projectLabel
                 + " defaultBranch=" + project.getDefaultBranch() + "\nDIRECTIVE\n" + directive.getContent()
                 + "\nREPOSITORIES\n" + repositories.findByProjectIdOrderByName(projectId).stream()
                 .map(r -> r.getId() + " name=" + r.getName() + " role=" + r.getRole() + " path=" + r.getRelativeWorkspacePath()
                         + " build=" + r.getBuildCommands() + " test=" + r.getTestCommands())
-                .reduce("", (a, b) -> a + b + "\n")
-                + "\nRELEVANT BEADS\n" + beadsContext;
+                 .reduce("", (a, b) -> a + b + "\n")
+                 + "\nRELEVANT BEADS\n" + beadsContext;
+        boolean reconciliationMode = currentPlan != null;
+        if (reconciliationMode) context += "\n" + reconciliation.promptContext(currentPlan);
         String catalog = "AGENT CATALOG\n"
                 + "spec=turn requirements into specifications; do not implement code\n"
                 + "architect=design system boundaries and technical approach\n"
@@ -112,7 +123,10 @@ public class ProjectManagerPlanningService {
                 + "security=review security and permissions\n"
                 + "docs=write and update documentation\n"
                 + "ui-assessor=assess user interface behavior and accessibility\n";
-        String prompt = managerVersion.getTeamPrompt() + "\n\nCreate a durable delivery plan for the explicit SPRINT OBJECTIVE in the PROJECT context. Preserve that objective as the delivery-plan objective unless a more precise wording is required. The plan will be approved once, then a scheduler will generate bounded sprints just in time. You MUST return a non-empty objective, at least one milestone, at least one step, and at least one Bead assignment. If RELEVANT BEADS is empty or does not cover the work, you MUST create at least one proposedBead and reference its proposalKey from a step's beadIds. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, suggestedSprintBoundaries, milestones, proposedBeads, and steps. Each milestone must contain milestoneKey, title, and outcome. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
+        String modeInstruction = reconciliationMode
+                ? "This is a reconciliation phase for an existing approved DeliveryPlan. Treat CURRENT DELIVERY PLAN RECONCILIATION as authoritative input, preserve still-valid planned work, add applicable new project Beads, remove or defer stale/out-of-scope work, and produce a revised plan version. Do not silently ignore a ready new Bead."
+                : "Create the initial DeliveryPlan.";
+        String prompt = managerVersion.getTeamPrompt() + "\n\n" + modeInstruction + " Create a durable delivery plan for the explicit SPRINT OBJECTIVE in the PROJECT context. Preserve that objective as the delivery-plan objective unless a more precise wording is required. The plan will be approved once, then a scheduler will generate bounded sprints just in time. You MUST return a non-empty objective, at least one milestone, at least one step, and at least one Bead assignment. If RELEVANT BEADS is empty or does not cover the work, you MUST create at least one proposedBead and reference its proposalKey from a step's beadIds. Use only beadIds from RELEVANT BEADS, or proposalKey values from proposedBeads for current gaps. Return JSON only with fields objective, reasoning, approvalPolicy, failurePolicy, suggestedSprintBoundaries, milestones, proposedBeads, and steps. Each milestone must contain milestoneKey, title, and outcome. proposedBeads must contain proposalKey, title, description, and labels. Each step must contain stepKey, beadIds, agentRole, repositoryIds, successCriteria, failurePolicy, dependsOn, and resourceLocks. Use only roles from the catalog. Assign implementation/build/compile-fixing work to fullstack (or database/devops when the repository task is specifically those domains), and assign verification/testing work to qa. Never assign spec to implementation or compilation work.\n\n" + catalog + "\n" + context;
         UUID attemptId = attempts.start(projectId, prompt, managerVersion.getProviderIdentifier(), managerVersion.getModelIdentifier(), managerVersion.getBaseUrl());
         AgentRunResult result;
         try {
@@ -144,7 +158,9 @@ public class ProjectManagerPlanningService {
                         strings(step, "dependsOn"), strings(step, "resourceLocks")));
             }
             DeliveryPlanRequest deliveryPlanRequest = deliveryPlanRequest(plan, stepRequests, beadIds, relevantBeads, directive.getId());
-            UUID deliveryPlanId = deliveryPlans.create(projectId, deliveryPlanRequest, "project-manager", "Project Manager").id();
+            UUID deliveryPlanId = reconciliationMode
+                    ? deliveryPlans.revise(currentPlan.getId(), deliveryPlanRequest, "project-manager").id()
+                    : deliveryPlans.create(projectId, deliveryPlanRequest, "project-manager", "Project Manager").id();
             attempts.finish(attemptId, "SUCCEEDED", modelOutput, null, null);
             return deliveryPlanId;
         } catch (Exception exception) {
@@ -199,6 +215,12 @@ public class ProjectManagerPlanningService {
                 }
             }
         }
+    }
+    static String resolveSprintObjective(String managerObjective, String planObjective, String directiveObjective, String projectObjective) {
+        for (String candidate : List.of(managerObjective, planObjective, directiveObjective, projectObjective)) {
+            if (candidate != null && !candidate.isBlank()) return candidate.trim();
+        }
+        throw new IllegalArgumentException("sprint objective is blank: project has no objective or directive");
     }
     private List<String> strings(JsonNode node, String field) { List<String> values = new ArrayList<>(); node.withArray(field).forEach(v -> values.add(v.asText())); return values; }
     private List<String> resolveBeadIds(JsonNode step, Map<String, String> proposals) {

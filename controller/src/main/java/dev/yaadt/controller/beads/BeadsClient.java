@@ -10,6 +10,8 @@ public interface BeadsClient {
 
     BeadsIssue createIssue(CreateBeadsIssue request);
 
+    void removeLabel(String issueId, String label);
+
     void claimIssue(String issueId);
 
     void releaseClaim(String issueId);

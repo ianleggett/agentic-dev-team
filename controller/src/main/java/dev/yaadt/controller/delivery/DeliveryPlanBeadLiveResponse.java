@@ -5,5 +5,6 @@ public record DeliveryPlanBeadLiveResponse(
         String liveStatus,
         String liveTitle,
         boolean present,
-        boolean changed) {
+        boolean changed,
+        boolean associated) {
 }

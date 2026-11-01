@@ -78,6 +78,9 @@ class TemporalWorkflowRecoveryTest {
         @Override public String executeSprint(String sprintId) { return sprintId; }
         @Override public String captureCheckpoint(String runId) { return runId; }
         @Override public String generateProjectPlan(String projectId) { return projectId; }
+        @Override public boolean isAutonomous(String projectId) { return false; }
+        @Override public boolean hasRemainingProjectWork(String projectId) { return false; }
+        @Override public String setProjectManagerStatus(String projectId, String status, String detail) { return status; }
         @Override public String approveAndExecuteSprint(String sprintId) { return sprintId; }
 
         @Override

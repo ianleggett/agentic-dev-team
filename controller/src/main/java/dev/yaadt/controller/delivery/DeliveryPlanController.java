@@ -20,11 +20,14 @@ public class DeliveryPlanController {
     private final DeliveryPlanService service;
     private final DeliveryPlanSprintQueryService sprintQuery;
     private final DeliveryPlanBeadLiveQueryService liveBeadQuery;
+    private final DeliveryPlanReconciliationService reconciliation;
     private final DeliveryPlanSchedulerService scheduler;
 
     public DeliveryPlanController(DeliveryPlanService service, DeliveryPlanSprintQueryService sprintQuery,
-            DeliveryPlanBeadLiveQueryService liveBeadQuery, DeliveryPlanSchedulerService scheduler) {
-        this.service = service; this.sprintQuery = sprintQuery; this.liveBeadQuery = liveBeadQuery; this.scheduler = scheduler;
+            DeliveryPlanBeadLiveQueryService liveBeadQuery, DeliveryPlanReconciliationService reconciliation,
+            DeliveryPlanSchedulerService scheduler) {
+        this.service = service; this.sprintQuery = sprintQuery; this.liveBeadQuery = liveBeadQuery;
+        this.reconciliation = reconciliation; this.scheduler = scheduler;
     }
 
     @GetMapping("/projects/{projectId}/delivery-plans")
@@ -46,6 +49,9 @@ public class DeliveryPlanController {
 
     @GetMapping("/delivery-plans/{planId}/beads/live")
     public List<DeliveryPlanBeadLiveResponse> liveBeads(@PathVariable UUID planId) { return liveBeadQuery.list(planId); }
+
+    @GetMapping("/delivery-plans/{planId}/reconciliation")
+    public DeliveryPlanReconciliationResponse reconciliation(@PathVariable UUID planId) { return reconciliation.inspect(planId); }
 
     @GetMapping("/delivery-plans/{planId}/sprints")
     public List<SprintResponse> sprints(@PathVariable UUID planId) { return sprintQuery.list(planId); }

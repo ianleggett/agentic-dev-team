@@ -38,10 +38,11 @@ public class ProjectManager {
     public String getLastPlanningError() { return lastPlanningError; }
     public Instant getLastPlanningFailedAt() { return lastPlanningFailedAt; }
     public String getPlanningObjective() { return planningObjective; }
-    public void setPlanningObjective(String objective, Instant now) { planningObjective = objective; updatedAt = now; }
+    public void setPlanningObjective(String objective, Instant now) { planningObjective = objective; state = "ENABLED"; updatedAt = now; }
     public void clearPlanningFailure(Instant now) { lastPlanningError = null; lastPlanningFailedAt = null; updatedAt = now; }
     public void recordPlanningFailure(String error, Instant now) {
         lastPlanningError = error == null ? "Unknown planning failure" : error.substring(0, Math.min(error.length(), 4000));
         lastPlanningFailedAt = now; updatedAt = now;
     }
+    public void setState(String nextState, Instant now) { state = nextState; updatedAt = now; }
 }

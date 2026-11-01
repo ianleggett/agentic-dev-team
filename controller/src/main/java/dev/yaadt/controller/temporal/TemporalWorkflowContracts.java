@@ -27,6 +27,9 @@ public final class TemporalWorkflowContracts {
         @ActivityMethod String executeSprint(String sprintId);
         @ActivityMethod String captureCheckpoint(String runId);
         @ActivityMethod String generateProjectPlan(String projectId);
+        @ActivityMethod boolean isAutonomous(String projectId);
+        @ActivityMethod boolean hasRemainingProjectWork(String projectId);
+        @ActivityMethod String setProjectManagerStatus(String projectId, String status, String detail);
         @ActivityMethod String approveAndExecuteSprint(String sprintId);
         @ActivityMethod String applySprintCommand(String commandId);
     }

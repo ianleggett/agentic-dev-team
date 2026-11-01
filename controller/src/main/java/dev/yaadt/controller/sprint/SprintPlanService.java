@@ -162,7 +162,7 @@ public class SprintPlanService {
         }
         var project = projects.findById(projectId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
-        Map<String, BeadsIssue> relevant = beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getBeadsProject())).stream()
+        Map<String, BeadsIssue> relevant = beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getName())).stream()
                 .collect(java.util.stream.Collectors.toMap(BeadsIssue::id, issue -> issue, (left, right) -> left));
         for (SprintStepRequest step : request.steps()) {
             for (String beadId : step.beadIds()) {

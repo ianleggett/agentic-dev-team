@@ -52,6 +52,12 @@ public class CliBeadsClient implements BeadsClient {
     }
 
     @Override
+    public void removeLabel(String issueId, String label) {
+        if (!getIssue(issueId).labels().contains(label)) return;
+        execute(List.of("update", issueId, "--remove-label", label, "--json"));
+    }
+
+    @Override
     public void claimIssue(String issueId) {
         String assignee = currentAssignee(issueId);
         if (properties.getActor().equals(assignee)) return;

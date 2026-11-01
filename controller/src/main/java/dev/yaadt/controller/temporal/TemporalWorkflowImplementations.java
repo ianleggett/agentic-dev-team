@@ -9,6 +9,11 @@ import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import dev.yaadt.controller.executor.AgentRunService;
+import dev.yaadt.controller.beads.BeadsClient;
+import dev.yaadt.controller.beads.BeadsProjectLabels;
+import dev.yaadt.controller.beads.BeadsStatus;
+import dev.yaadt.controller.project.ProjectRepository;
+import dev.yaadt.controller.manager.ProjectManagerRepository;
 
 public final class TemporalWorkflowImplementations {
     private TemporalWorkflowImplementations() { }
@@ -32,6 +37,26 @@ public final class TemporalWorkflowImplementations {
                     sprintId = activities.generateProjectPlan(projectId);
                 } finally {
                     activities.releaseLease("planning:global", owner);
+                }
+                int autonomousVersion = Workflow.getVersion("autonomous-supervisor-loop", Workflow.DEFAULT_VERSION, 1);
+                if (autonomousVersion == 1 && activities.isAutonomous(projectId)) {
+                    while (true) {
+                        String result = activities.approveAndExecuteSprint(sprintId);
+                        if (result.startsWith("BLOCKED:")) {
+                            activities.setProjectManagerStatus(projectId, "BLOCKED", result);
+                            return result;
+                        }
+                        if (!activities.hasRemainingProjectWork(projectId)) {
+                            activities.setProjectManagerStatus(projectId, "COMPLETED", "No remaining non-terminal project Beads");
+                            return "COMPLETED: no remaining project Beads";
+                        }
+                        activities.acquireLease("planning:global", owner);
+                        try {
+                            sprintId = activities.generateProjectPlan(projectId);
+                        } finally {
+                            activities.releaseLease("planning:global", owner);
+                        }
+                    }
                 }
                 while (!approved) {
                     activities.heartbeatLease("project-manager:" + projectId, owner);
@@ -66,15 +91,21 @@ public final class TemporalWorkflowImplementations {
         private final dev.yaadt.controller.delivery.DeliveryPlanRepository deliveryPlans;
         private final dev.yaadt.controller.delivery.DeliveryPlanService deliveryPlanService;
         private final dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler;
+        private final ProjectRepository projects;
+        private final BeadsClient beads;
+        private final ProjectManagerRepository managers;
         public Activities(AgentRunService runs, dev.yaadt.controller.manager.ProjectManagerPlanningService planning,
                 dev.yaadt.controller.sprint.SprintCommandService commands, dev.yaadt.controller.sprint.SprintPlanVersionRepository plans,
                 dev.yaadt.controller.manager.ControllerLeaseService leases, dev.yaadt.controller.sprint.SprintRepository sprints,
                 dev.yaadt.controller.delivery.DeliveryPlanRepository deliveryPlans,
                 dev.yaadt.controller.delivery.DeliveryPlanService deliveryPlanService,
-                dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler) {
+                dev.yaadt.controller.delivery.DeliveryPlanSchedulerService scheduler,
+                ProjectRepository projects, BeadsClient beads, ProjectManagerRepository managers) {
             this.runs = runs; this.planning = planning; this.commands = commands; this.plans = plans;
             this.leases = leases; this.sprints = sprints; this.deliveryPlans = deliveryPlans;
             this.deliveryPlanService = deliveryPlanService; this.scheduler = scheduler;
+            this.projects = projects; this.beads = beads;
+            this.managers = managers;
         }
         @Override public String acquireLease(String leaseKey, String ownerId) { return leases.acquire(leaseKey, ownerId); }
         @Override public String heartbeatLease(String leaseKey, String ownerId) { return leases.heartbeat(leaseKey, ownerId); }
@@ -96,6 +127,22 @@ public final class TemporalWorkflowImplementations {
                 throw failure;
             }
         }
+        @Override public boolean isAutonomous(String projectId) {
+            return projects.findById(UUID.fromString(projectId)).map(project -> !project.isApprovalRequired()).orElse(false);
+        }
+        @Override public boolean hasRemainingProjectWork(String projectId) {
+            var project = projects.findById(UUID.fromString(projectId)).orElseThrow(() -> new IllegalArgumentException("Project not found"));
+            return beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getName())).stream()
+                    .anyMatch(issue -> !BeadsStatus.isTerminal(issue.status()));
+        }
+        @Override public String setProjectManagerStatus(String projectId, String status, String detail) {
+            managers.findByProjectId(UUID.fromString(projectId)).ifPresent(manager -> {
+                manager.setState(status, java.time.Instant.now());
+                if ("BLOCKED".equals(status)) manager.recordPlanningFailure(detail, java.time.Instant.now());
+                managers.save(manager);
+            });
+            return status;
+        }
         @Override public String approveAndExecuteSprint(String sprintId) {
             UUID id = UUID.fromString(sprintId);
             var deliveryPlan = deliveryPlans.findById(id).orElse(null);
@@ -107,7 +154,12 @@ public final class TemporalWorkflowImplementations {
                 deliveryPlanService.approve(deliveryPlan.getId(),
                         new dev.yaadt.controller.delivery.DeliveryPlanDecisionRequest(deliveryPlan.getCurrentVersion(), "Project Manager approval"),
                         "project-manager");
-                var generated = scheduler.generateNextSprint(deliveryPlan.getId(), "project-manager", "Project Manager");
+                dev.yaadt.controller.sprint.SprintResponse generated;
+                try {
+                    generated = scheduler.generateNextSprint(deliveryPlan.getId(), "project-manager", "Project Manager");
+                } catch (RuntimeException blocked) {
+                    return "BLOCKED: " + (blocked.getMessage() == null ? blocked.getClass().getSimpleName() : blocked.getMessage());
+                }
                 var info = Activity.getExecutionContext().getInfo();
                 return runs.executeSprint(generated.id(), info.getWorkflowId(), info.getRunId());
             }

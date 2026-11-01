@@ -68,7 +68,7 @@ class DeliveryPlanSchedulerServiceTest {
         when(sprints.findByDeliveryPlanIdOrderByCreatedAtDesc(planId)).thenReturn(List.of());
         when(versions.findByDeliveryPlanIdAndVersion(planId, 1)).thenReturn(Optional.of(version));
         when(projects.findById(plan.getProjectId())).thenReturn(Optional.of(project));
-        when(beads.listRelevantIssues("project:yaadt")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "open", List.of("project:yaadt"), List.of())));
+        when(beads.listRelevantIssues("project:YAADT")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "open", List.of("project:YAADT"), List.of())));
         when(profiles.findByRole("fullstack")).thenReturn(Optional.of(profile));
         when(profile.getId()).thenReturn(UUID.randomUUID());
         when(profileVersions.findTopByProfileIdOrderByVersionDesc(profile.getId())).thenReturn(Optional.of(profileVersion));
@@ -89,7 +89,7 @@ class DeliveryPlanSchedulerServiceTest {
         when(sprints.findByDeliveryPlanIdOrderByCreatedAtDesc(planId)).thenReturn(List.of());
         when(versions.findByDeliveryPlanIdAndVersion(planId, 1)).thenReturn(Optional.of(version));
         when(projects.findById(plan.getProjectId())).thenReturn(Optional.of(project));
-        when(beads.listRelevantIssues("project:yaadt")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "closed", List.of("project:yaadt"), List.of())));
+        when(beads.listRelevantIssues("project:YAADT")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "closed", List.of("project:YAADT"), List.of())));
 
         assertThatThrownBy(() -> scheduler.generateNextSprint(planId, "operator", "Operator"))
                 .hasMessageContaining("No ready Beads");
@@ -106,7 +106,7 @@ class DeliveryPlanSchedulerServiceTest {
         when(sprints.findByDeliveryPlanIdOrderByCreatedAtDesc(planId)).thenReturn(List.of());
         when(versions.findByDeliveryPlanIdAndVersion(planId, 1)).thenReturn(Optional.of(version));
         when(projects.findById(plan.getProjectId())).thenReturn(Optional.of(project));
-        when(beads.listRelevantIssues("project:yaadt")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "open", List.of("project:yaadt"), List.of())));
+        when(beads.listRelevantIssues("project:YAADT")).thenReturn(List.of(new BeadsIssue("b1", "Build", "", "open", List.of("project:YAADT"), List.of())));
 
         assertThatThrownBy(() -> scheduler.generateNextSprint(planId, "operator", "Operator"))
                 .hasMessageContaining("No ready Beads");

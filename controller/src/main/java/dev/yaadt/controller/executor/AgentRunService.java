@@ -282,7 +282,7 @@ public class AgentRunService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Sprint not found"));
         var project = projects.findById(sprint.getProjectId()).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
-        String label = BeadsProjectLabels.forProject(project.getBeadsProject());
+        String label = BeadsProjectLabels.forProject(project.getName());
         StringBuilder context = new StringBuilder("\n\nLIVE BEADS CONTEXT (fetched immediately before execution)\n");
         for (String beadId : Arrays.stream(step.getBeadIds().split(",")).map(String::trim).filter(value -> !value.isBlank()).toList()) {
             BeadsIssue issue = beads.getIssue(beadId);

@@ -61,11 +61,15 @@ public class DeliveryPlanSchedulerService {
     public SprintResponse generateNextSprint(UUID planId, String subject, String displayName) {
         DeliveryPlan plan = plans.findForUpdateById(planId).orElseThrow(() -> notFound("DeliveryPlan not found"));
         if (!"APPROVED".equals(plan.getState())) conflict("Only an approved DeliveryPlan can generate a Sprint");
-        if (sprints.findByDeliveryPlanIdOrderByCreatedAtDesc(planId).stream().anyMatch(this::active)) {
+        var activeSprints = sprints.findByDeliveryPlanIdOrderByCreatedAtDesc(planId).stream().filter(this::active).toList();
+        if (activeSprints.stream().anyMatch(sprint -> sprint.getDeliveryPlanVersionId() == null)) {
             conflict("DeliveryPlan already has an active Sprint");
         }
         DeliveryPlanVersion version = versions.findByDeliveryPlanIdAndVersion(planId, plan.getApprovedVersion()).orElseThrow(() ->
                 notFound("Approved DeliveryPlan version not found"));
+        if (activeSprints.stream().anyMatch(sprint -> version.getId().equals(sprint.getDeliveryPlanVersionId()))) {
+            conflict("DeliveryPlan already has an active Sprint");
+        }
         if (version.getDirectiveRevisionId() == null) conflict("DeliveryPlan has no directive revision");
         var project = projects.findById(plan.getProjectId()).orElseThrow(() -> notFound("Project not found"));
         try {
@@ -78,7 +82,7 @@ public class DeliveryPlanSchedulerService {
             }
             JsonNode snapshot = mapper.readTree(version.getPlanSnapshot());
             Map<String, List<String>> stepBeads = stepBeads(snapshot);
-            Map<String, BeadsIssue> live = beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getBeadsProject())).stream()
+            Map<String, BeadsIssue> live = beads.listRelevantIssues(BeadsProjectLabels.forProject(project.getName())).stream()
                     .collect(java.util.stream.Collectors.toMap(BeadsIssue::id, issue -> issue, (left, right) -> left));
             List<SprintStepRequest> selected = new ArrayList<>();
             for (JsonNode step : snapshot.withArray("steps")) {
@@ -96,7 +100,15 @@ public class DeliveryPlanSchedulerService {
                         uuids(step, "repositoryIds"), step.path("successCriteria").asText(), step.path("failurePolicy").asText("stop"),
                         strings(step, "dependsOn"), strings(step, "resourceLocks")));
             }
-            if (selected.isEmpty()) conflict("No ready Beads are available for the next Sprint");
+            if (selected.isEmpty()) {
+                List<String> plannedIds = new ArrayList<>();
+                for (JsonNode step : snapshot.withArray("steps")) plannedIds.addAll(strings(step, "beadIds"));
+                plannedIds = plannedIds.stream().distinct().toList();
+                List<String> readyProjectBeads = live.values().stream()
+                        .filter(issue -> !BeadsStatus.isTerminal(issue.status())).map(BeadsIssue::id).sorted().toList();
+                conflict("No ready Beads are available for the next Sprint. Planned: " + plannedIds
+                        + "; ready project Beads: " + readyProjectBeads + ". Revise the DeliveryPlan to include ready work.");
+            }
             Set<String> selectedKeys = selected.stream().map(SprintStepRequest::stepKey).collect(java.util.stream.Collectors.toSet());
             selected = selected.stream().map(step -> new SprintStepRequest(step.stepKey(), step.beadIds(), step.agentRole(),
                     step.agentProfileVersionId(), step.repositoryIds(), step.successCriteria(), step.failurePolicy(),
@@ -106,6 +118,7 @@ public class DeliveryPlanSchedulerService {
             SprintResponse response = sprintPlans.create(plan.getProjectId(), request, subject, displayName);
             Sprint sprint = sprints.findById(response.id()).orElseThrow(() -> notFound("Generated Sprint not found"));
             sprint.bindDeliveryPlan(planId, version.getId(), firstMilestone(snapshot), Instant.now(clock));
+            sprint.transition("READY", Instant.now(clock));
             sprints.save(sprint);
             for (SprintStepRequest step : selected) {
                 for (String beadId : step.beadIds()) {
