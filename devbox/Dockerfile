@@ -177,7 +177,8 @@ RUN python3 -m venv /opt/cocoindex-code && \
     /opt/cocoindex-code/bin/python -m pip install --upgrade pip setuptools wheel && \
     /opt/cocoindex-code/bin/pip install \
         "cocoindex-code[full]==${COCOINDEX_CODE_VERSION}" \
-        "mcp==${MCP_VERSION}"
+        "mcp==${MCP_VERSION}" \
+        "filelock==4.2.1"
 
 RUN python3 -m venv /opt/python-security-tools && \
     /opt/python-security-tools/bin/python -m pip install --upgrade pip && \
